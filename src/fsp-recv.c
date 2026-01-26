@@ -176,7 +176,7 @@ int main(int argc, char **argv) {
     char dest_real[PATH_MAX];
     int dest_fd = open_dest_root(dest_root, dest_real, sizeof(dest_real));
     if (dest_fd < 0) {
-        return 1;
+        goto out;
     }
 
     fprintf(stderr, "fsp-recv: dest-root = %s\n", dest_real);
@@ -308,6 +308,11 @@ int main(int argc, char **argv) {
     done:
     fprintf(stderr, "fsp-recv: session complete\n");
 
+    out:
+    if (dest_fd >= 0) {
+        close(dest_fd);
+        dest_fd = -1;
+    }
 
     return 0;
 }
