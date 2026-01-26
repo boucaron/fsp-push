@@ -1,6 +1,7 @@
 *.o
 *.a
 *.so
+*.exe
 fsp-send
 fsp-recv
 /build
