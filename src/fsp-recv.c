@@ -1,4 +1,5 @@
 #include "fsp.h"
+#include "fsp_io.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,6 +12,7 @@
 #include <limits.h>
 #include <fcntl.h>
 
+
 static void usage(const char *prog) {
     fprintf(stderr,
         "usage: %s [--mode MODE] <dest-root>\n"
@@ -19,8 +21,11 @@ static void usage(const char *prog) {
         "  overwrite   Always overwrite existing files (default)\n"
         "  skip        Skip files if they already exist\n"
         "  hash        Overwrite only if final SHA256 differs\n"
-        "  fail        Fail if file already exists\n",
-        prog);
+        "  fail        Fail if file already exists\n"
+        "\n"
+        "Version: NA\n"
+        "(c) 2026 - Julien BOUCARON\n"
+        ,prog);
 }
 
 static int parse_mode(const char *s, fsp_mode_t *out) {
@@ -145,6 +150,7 @@ int main(int argc, char **argv) {
 
     const char *dest_root = argv[optind];
 
+    
     fprintf(stderr, "fsp-recv: dest-root = %s\n", dest_root);
     fprintf(stderr, "fsp-recv: mode = %d\n", cli_mode);
 
@@ -174,6 +180,134 @@ int main(int argc, char **argv) {
     }
 
     fprintf(stderr, "fsp-recv: dest-root = %s\n", dest_real);
+
+
+    fprintf(stderr, "fsp-recv: ready to rock!\nfsp-recv: Waiting for the header\n");
+    // OK READ THE PROTOCOL HEADER FIRST
+    int errHeader = 0;
+    uint32_t magic = fsp_read_u32_be(STDIN_FILENO, &errHeader);
+    if (errHeader)
+        return 1;
+    errHeader = 0;
+    uint16_t version = fsp_read_u16_be(STDIN_FILENO, &errHeader);
+    if (errHeader)
+        return 1;
+    errHeader = 0;
+    uint16_t flags = fsp_read_u16_be(STDIN_FILENO, &errHeader);
+    if (errHeader)
+        return 1;
+
+    if (magic != 0x46535031) { // "FSP1"
+        fprintf(stderr, "fsp-recv: bad magic: 0x%08x\n", magic);
+        return 1;
+    }
+
+    if (version != 2) {
+        fprintf(stderr, "fsp-recv: unsupported version: %u\n", version);
+        return 1;
+    }
+
+    if (flags != 0) {
+        fprintf(stderr, "fsp-recv: unsupported flags: 0x%04x\n", flags);
+        return 1;
+    }
+
+    fprintf(stderr, "fsp-recv: protocol OK (v%u)\n", version);
+
+   // MAIN LOOP
+
+    for (;;) {
+        uint8_t cmd;
+
+        if (fsp_read_exact(STDIN_FILENO, &cmd, 1) != 0) {
+            fprintf(stderr, "fsp-recv: failed to read command byte\n");
+            return 1;
+        }
+
+        switch (cmd) {
+
+        case FSP_CMD_SET_MODE: { // 0x10
+            uint8_t mode;
+
+            if (fsp_read_exact(STDIN_FILENO, &mode, 1) != 0)
+                return 1;
+
+            fprintf(stderr, "fsp-recv: SET_MODE %u\n", mode);
+
+            switch (mode) {
+            case FSP_OVERWRITE_ALWAYS:
+            case FSP_SKIP_IF_EXISTS:
+            case FSP_OVERWRITE_IF_HASH_DIFFERS:
+            case FSP_FAIL_IF_EXISTS:
+                current_mode = (fsp_mode_t)mode;
+                break;
+            default:
+                fprintf(stderr, "fsp-recv: unsupported SET_MODE %u\n", mode);
+                return 1;
+            }
+            break;
+        }
+
+        case FSP_CMD_MKDIR: { // 0x01 (optional / deprecated)
+            int err = 0;
+            uint16_t path_len = fsp_read_u16_be(STDIN_FILENO, &err);
+            if (err)
+                return 1;
+
+            if (path_len == 0 || path_len > PATH_MAX) {
+                fprintf(stderr, "fsp-recv: MKDIR invalid path length %u\n", path_len);
+                return 1;
+            }
+
+            char path[PATH_MAX + 1];
+            if (fsp_read_exact(STDIN_FILENO, path, path_len) != 0)
+                return 1;
+            path[path_len] = '\0';
+
+            fprintf(stderr, "fsp-recv: MKDIR '%s' (ignored/optional)\n", path);
+
+            /*
+            * Spec: MKDIR is optional / deprecated.
+            * We rely on implicit mkdir during FILE_LIST handling.
+            */
+            break;
+        }
+
+        case FSP_CMD_FILE_LIST: { // 0x02
+            fprintf(stderr, "fsp-recv: FILE_LIST (TODO)\n");
+
+            /*
+            * TODO (next big step):
+            *  - read prefix_len + prefix (must end with '/')
+            *  - validate prefix (no .., no absolute)
+            *  - read entry_count
+            *  - for each entry:
+            *      - path
+            *      - size
+            *      - sha256
+            *  - create needed dirs using openat()
+            *  - open files according to current_mode
+            *  - then enter DATA receive state
+            */
+
+            fprintf(stderr, "fsp-recv: FILE_LIST not implemented yet\n");
+            return 1;
+        }
+
+        case FSP_CMD_END: { // 0xFF
+            fprintf(stderr, "fsp-recv: END\n");
+            goto done;
+        }
+
+        default:
+            fprintf(stderr, "fsp-recv: unknown cmd 0x%02x\n", cmd);
+            return 1;
+        }
+    }
+
+    done:
+    fprintf(stderr, "fsp-recv: session complete\n");
+
 
     return 0;
 }
