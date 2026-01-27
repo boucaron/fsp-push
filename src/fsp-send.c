@@ -3,6 +3,8 @@
 #include "fsp_opt.h"
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <limits.h>
 #include <unistd.h>
 
 #include <getopt.h>
@@ -134,6 +136,14 @@ int main(int argc, char **argv) {
     if (check_source_dir(source_path) != 0) {
         return 1;
     }
+
+    char source_real[PATH_MAX];
+    if (!realpath(source_path, source_real)) {
+        fprintf(stderr, "fsp-send: realpath('%s') failed: %s\n",
+                source_path, strerror(errno));
+        return 1;
+    }
+
 
     if (send_header(STDOUT_FILENO) != 0) 
         return 1;
