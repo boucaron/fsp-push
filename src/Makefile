@@ -4,7 +4,7 @@ CFLAGS ?= -O2 -Wall -Wextra -I../include
 BIN_SEND = fsp-send
 BIN_RECV = fsp-recv
 
-OBJS_COMMON = fsp_io.o fsp_opt.o
+OBJS_COMMON = fsp_io.o fsp_opt.o fsp_fs.o fsp_walk.o
 
 all: $(BIN_SEND) $(BIN_RECV)
 
