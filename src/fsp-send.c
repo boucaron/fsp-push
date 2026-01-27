@@ -43,7 +43,8 @@ static int send_set_mode(int fd, fsp_mode_t mode) {
     if (fsp_write_all(fd, &cmd, 1) != 0) return -1;
     if (fsp_write_all(fd, &m, 1) != 0) return -1;
 
-    fprintf(stderr, "fsp-send: SET_MODE %u\n", m);
+    fprintf(stderr, "fsp-recv: SET_MODE %u (%s)\n",
+                mode, fsp_mode_to_string((fsp_mode_t)mode));
     return 0;
 }
 

@@ -226,7 +226,8 @@ int main(int argc, char **argv) {
             if (fsp_read_exact(STDIN_FILENO, &mode, 1) != 0)
                 return 1;
 
-            fprintf(stderr, "fsp-recv: SET_MODE %u\n", mode);
+            fprintf(stderr, "fsp-recv: SET_MODE %u (%s)\n",
+                mode, fsp_mode_to_string((fsp_mode_t)mode));
 
             switch (mode) {
             case FSP_OVERWRITE_ALWAYS:
@@ -236,7 +237,9 @@ int main(int argc, char **argv) {
                 current_mode = (fsp_mode_t)mode;
                 break;
             default:
-                fprintf(stderr, "fsp-recv: unsupported SET_MODE %u\n", mode);
+                fprintf(stderr,
+                    "fsp-recv: unsupported SET_MODE %u (%s)\n",
+                    mode, fsp_mode_to_string((fsp_mode_t)mode));
                 return 1;
             }
             break;
