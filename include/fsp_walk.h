@@ -1,50 +1,45 @@
 #pragma once
 
-#include "fsp_fs.h"
+#include <stddef.h>
+#include <unistd.h>
+
+#define FSP_MAX_WALK_DEPTH 1024
+
+typedef struct {
+    size_t max_files;      // e.g. FSP_MAX_FILES_PER_LIST
+    uint64_t max_bytes;    // e.g. some batching threshold
+} fsp_walk_limits_t;
 
 /*
- * Recursive walk callback.
- *
- * full_path = full filesystem path
- * rel_path  = path relative to walk root
- * type      = FILE or DIR
- *
- * Return:
- *   0  -> continue
- *  <0  -> abort walk
+ * Callbacks for batching.
+ * The walker does NOT send protocol itself — it just groups files.
  */
-typedef int (*fsp_walk_cb_t)(
+
+typedef int (*fsp_batch_file_cb_t)(
     const char *full_path,
-    const char *rel_path,
-    fsp_entry_type_t type,
+    uint64_t size,
+    void *user
+);
+
+typedef int (*fsp_batch_flush_cb_t)(
     void *user
 );
 
 /*
- * Recursively walk a directory tree using fsp_list_dir().
+ * Recursive filesystem walker.
  *
- * root_path:
- *   Filesystem path to walk (must be a directory)
- *
- * root_rel:
- *   Initial relative path (usually "")
- *
- * cb:
- *   Called for each file and directory.
- *
- * user:
- *   User pointer passed to callback.
- *
- * Skips:
- *   - symlinks
- *   - special files
- * (inherited from fsp_list_dir)
+ * - Walks directories depth-first
+ * - Batches files
+ * - Calls batch_file_cb for each file added to current batch
+ * - Calls batch_flush_cb when batch should be flushed
  *
  * Returns 0 on success, -1 on error.
  */
-int fsp_walk_recursive(
+int fsp_walk_tree(
     const char *root_path,
-    const char *root_rel,
-    fsp_walk_cb_t cb,
+    int depth,
+    const fsp_walk_limits_t *limits,
+    fsp_batch_file_cb_t batch_file_cb,
+    fsp_batch_flush_cb_t batch_flush_cb,
     void *user
 );
