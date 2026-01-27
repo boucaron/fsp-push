@@ -1,45 +1,41 @@
 #pragma once
 
-#include <stddef.h>
-#include <unistd.h>
-
-#define FSP_MAX_WALK_DEPTH 1024
+#include <stdint.h>
+#include <limits.h>
+#include <sys/types.h>
 
 typedef struct {
-    size_t max_files;      // e.g. FSP_MAX_FILES_PER_LIST
-    uint64_t max_bytes;    // e.g. some batching threshold
-} fsp_walk_limits_t;
+    char     name[NAME_MAX + 1];   // entry name
+    uint64_t size;                 // for files
+} fsp_file_entry_t;
 
-/*
- * Callbacks for batching.
- * The walker does NOT send protocol itself — it just groups files.
- */
+typedef struct {
+    char name[NAME_MAX + 1];       // directory name
+} fsp_dir_entry_t;
 
-typedef int (*fsp_batch_file_cb_t)(
-    const char *full_path,
-    uint64_t size,
-    void *user
-);
+typedef struct {
+    fsp_file_entry_t *files;
+    size_t            num_files;
+    size_t            cap_files;
 
-typedef int (*fsp_batch_flush_cb_t)(
-    void *user
-);
+    fsp_dir_entry_t  *dirs;
+    size_t            num_dirs;
+    size_t            cap_dirs;
+} fsp_dir_entries_t;
 
-/*
- * Recursive filesystem walker.
- *
- * - Walks directories depth-first
- * - Batches files
- * - Calls batch_file_cb for each file added to current batch
- * - Calls batch_flush_cb when batch should be flushed
- *
- * Returns 0 on success, -1 on error.
- */
-int fsp_walk_tree(
-    const char *root_path,
-    int depth,
-    const fsp_walk_limits_t *limits,
-    fsp_batch_file_cb_t batch_file_cb,
-    fsp_batch_flush_cb_t batch_flush_cb,
-    void *user
-);
+/* Limits for batching */
+typedef struct {
+    size_t   max_files;    // e.g. FSP_MAX_FILES_PER_LIST
+    uint64_t max_bytes;    // e.g. 512MB, 1GB, etc
+} fsp_batch_limits_t;
+
+/* Forward decl for sender */
+struct fsp_sender;
+
+/* FILE_LIST batching interface */
+int fsp_filelist_add_file(struct fsp_sender *s,
+                           const char *full_path,
+                           const char *rel_path,
+                           uint64_t size);
+
+int fsp_filelist_flush(struct fsp_sender *s);

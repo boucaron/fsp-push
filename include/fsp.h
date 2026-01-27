@@ -11,8 +11,7 @@
 #define FSP_CMD_SET_MODE  0x10
 #define FSP_CMD_END       0xFF
 
-// Chunking
-#define FSP_CHUNK_SIZE (128ULL * 1024ULL * 1024ULL)
+
 
 // Modes
 typedef enum {
@@ -23,4 +22,7 @@ typedef enum {
 } fsp_mode_t;
 
 // Limits
+#define FSP_CHUNK_SIZE (128ULL * 1024ULL * 1024ULL)
 #define FSP_MAX_FILES_PER_LIST 1024
+#define FSP_MAX_WALK_DEPTH 1024
+

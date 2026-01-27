@@ -1,152 +1,84 @@
+#include "fsp.h"
 #include "fsp_walk.h"
-#include "fsp_fs.h"
+#include "fsp_list_dir.h"
+#include "fsp_sender.h"
 
 #include <stdio.h>
 #include <string.h>
-#include <errno.h>
-#include <sys/stat.h>
-#include <stdint.h>
 
-typedef struct {
-    size_t cur_files;
-    uint64_t cur_bytes;
-} fsp_walk_state_t;
-
-/* Forward */
-static int fsp_walk_dir_internal(
-    const char *dirpath,
-    int depth,
-    const fsp_walk_limits_t *limits,
-    fsp_walk_state_t *st,
-    fsp_batch_file_cb_t batch_file_cb,
-    fsp_batch_flush_cb_t batch_flush_cb,
-    void *user
-);
-
-/* Context passed to fsp_list_dir callback */
-typedef struct {
-    const char *dirpath;
-    int depth;
-    const fsp_walk_limits_t *limits;
-    fsp_walk_state_t *st;
-    fsp_batch_file_cb_t batch_file_cb;
-    fsp_batch_flush_cb_t batch_flush_cb;
-    void *user;
-} list_ctx_t;
-
-static int on_list_entry(const char *name, fsp_entry_type_t type, void *user) {
-    list_ctx_t *ctx = user;
-    char full[PATH_MAX];
-    struct stat st;
-
-    if (snprintf(full, sizeof(full), "%s/%s", ctx->dirpath, name) >= (int)sizeof(full)) {
-        fprintf(stderr, "fsp-walk: path too long: %s/%s\n",
-                ctx->dirpath, name);
+static int walk_dir_internal(struct fsp_sender *s,
+                             const char *full_path,
+                             const char *rel_path,
+                             int depth)
+{
+    if (depth > FSP_MAX_WALK_DEPTH) {
+        fprintf(stderr, "fsp: max walk depth exceeded\n");
         return -1;
     }
 
-    if (type == FSP_ENTRY_FILE) {
-        if (stat(full, &st) != 0) {
-            perror("stat");
-            return -1;
+    fsp_dir_entries_t ent;
+    if (fsp_collect_dir_entries(full_path, &ent) != 0)
+        return -1;
+
+    /* ---- FILES FIRST: batch and send ---- */
+    for (size_t i = 0; i < ent.num_files; i++) {
+        fsp_file_entry_t *f = &ent.files[i];
+
+        char f_full[PATH_MAX];
+        char f_rel[PATH_MAX];
+
+        snprintf(f_full, sizeof(f_full),
+                 "%s/%s", full_path, f->name);
+
+        if (rel_path && rel_path[0]) {
+            snprintf(f_rel, sizeof(f_rel),
+                     "%s/%s", rel_path, f->name);
+        } else {
+            snprintf(f_rel, sizeof(f_rel),
+                     "%s", f->name);
         }
 
-        uint64_t size = (uint64_t)st.st_size;
-
-        /* Check if batch should flush BEFORE adding */
-        if (ctx->st->cur_files > 0) {
-            if (ctx->st->cur_files >= ctx->limits->max_files ||
-                ctx->st->cur_bytes + size > ctx->limits->max_bytes) {
-
-                if (ctx->batch_flush_cb(ctx->user) != 0)
-                    return -1;
-
-                ctx->st->cur_files = 0;
-                ctx->st->cur_bytes = 0;
-            }
-        }
-
-        if (ctx->batch_file_cb(full, size, ctx->user) != 0)
-            return -1;
-
-        ctx->st->cur_files++;
-        ctx->st->cur_bytes += size;
-
-    } else if (type == FSP_ENTRY_DIR) {
-        if (ctx->depth + 1 >= FSP_MAX_WALK_DEPTH) {
-            fprintf(stderr, "fsp-walk: max recursion depth exceeded at %s\n", full);
-            return -1;
-        }
-
-        /* Recurse immediately (depth-first) */
-        if (fsp_walk_dir_internal(
-                full,
-                ctx->depth + 1,
-                ctx->limits,
-                ctx->st,
-                ctx->batch_file_cb,
-                ctx->batch_flush_cb,
-                ctx->user) != 0) {
-            return -1;
-        }
+        if (fsp_filelist_add_file(s, f_full, f_rel, f->size) != 0)
+            goto fail;
     }
 
+    /* Flush at directory boundary */
+    if (fsp_filelist_flush(s) != 0)
+        goto fail;
+
+    /* ---- THEN RECURSE INTO SUBDIRS ---- */
+    for (size_t i = 0; i < ent.num_dirs; i++) {
+        fsp_dir_entry_t *d = &ent.dirs[i];
+
+        char d_full[PATH_MAX];
+        char d_rel[PATH_MAX];
+
+        snprintf(d_full, sizeof(d_full),
+                 "%s/%s", full_path, d->name);
+
+        if (rel_path && rel_path[0]) {
+            snprintf(d_rel, sizeof(d_rel),
+                     "%s/%s", rel_path, d->name);
+        } else {
+            snprintf(d_rel, sizeof(d_rel),
+                     "%s", d->name);
+        }
+
+        if (walk_dir_internal(s, d_full, d_rel, depth + 1) != 0)
+            goto fail;
+    }
+
+    fsp_free_dir_entries(&ent);
     return 0;
+
+fail:
+    fsp_free_dir_entries(&ent);
+    return -1;
 }
 
-static int fsp_walk_dir_internal(
-    const char *dirpath,
-    int depth,
-    const fsp_walk_limits_t *limits,
-    fsp_walk_state_t *st,
-    fsp_batch_file_cb_t batch_file_cb,
-    fsp_batch_flush_cb_t batch_flush_cb,
-    void *user
-) {
-    list_ctx_t ctx = {
-        .dirpath = dirpath,
-        .depth = depth,
-        .limits = limits,
-        .st = st,
-        .batch_file_cb = batch_file_cb,
-        .batch_flush_cb = batch_flush_cb,
-        .user = user
-    };
-
-    if (fsp_list_dir(dirpath, on_list_entry, &ctx) != 0) {
-        fprintf(stderr, "fsp-walk: failed to list %s\n", dirpath);
-        return -1;
-    }
-
-    return 0;
-}
-
-int fsp_walk_tree(
-    const char *root_path,
-    int depth,
-    const fsp_walk_limits_t *limits,
-    fsp_batch_file_cb_t batch_file_cb,
-    fsp_batch_flush_cb_t batch_flush_cb,
-    void *user
-) {
-    fsp_walk_state_t st = {0};
-
-    if (fsp_walk_dir_internal(
-            root_path,
-            depth,
-            limits,
-            &st,
-            batch_file_cb,
-            batch_flush_cb,
-            user) != 0) {
-        return -1;
-    }
-
-    /* Flush final batch if not empty */
-    if (st.cur_files > 0) {
-        if (batch_flush_cb(user) != 0)
-            return -1;
-    }
-
-    return 0;
+int fsp_walk_tree(struct fsp_sender *s,
+                   const char *root_full,
+                   const char *root_rel)
+{
+    return walk_dir_internal(s, root_full, root_rel, 0);
 }
