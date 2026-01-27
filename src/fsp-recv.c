@@ -166,7 +166,7 @@ int main(int argc, char **argv) {
     if (ensure_dir_exists(dest_root) != 0) {
      return 1;
     }
-
+    
     char dest_real[PATH_MAX];
     int dest_fd = open_dest_root(dest_root, dest_real, sizeof(dest_real));
     if (dest_fd < 0) {
