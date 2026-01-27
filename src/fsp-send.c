@@ -6,6 +6,9 @@
 #include <unistd.h>
 
 #include <getopt.h>
+#include <errno.h>
+
+#include <sys/stat.h>
 
 static struct option long_opts[] = {
     { "mode", required_argument, 0, 'm' },
@@ -68,6 +71,29 @@ static int send_end(int fd) {
     return fsp_write_all(fd, &cmd, 1);
 }
 
+static int check_source_dir(const char *path) {
+    struct stat st;
+
+    if (stat(path, &st) != 0) {
+        fprintf(stderr, "fsp-send: cannot stat '%s': %s\n",
+                path, strerror(errno));
+        return -1;
+    }
+
+    if (!S_ISDIR(st.st_mode)) {
+        fprintf(stderr, "fsp-send: '%s' is not a directory\n", path);
+        return -1;
+    }
+
+    if (access(path, R_OK | X_OK) != 0) {
+        fprintf(stderr, "fsp-send: no permission to read/traverse '%s': %s\n",
+                path, strerror(errno));
+        return -1;
+    }
+
+    return 0;
+}
+
 /* --- main --- */
 
 int main(int argc, char **argv) {
@@ -104,6 +130,10 @@ int main(int argc, char **argv) {
     const char *source_path = argv[optind];
 
     fprintf(stderr, "fsp-send: sending minimal test stream\n");
+
+    if (check_source_dir(source_path) != 0) {
+        return 1;
+    }
 
     if (send_header(STDOUT_FILENO) != 0) 
         return 1;
