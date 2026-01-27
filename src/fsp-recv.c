@@ -1,5 +1,6 @@
 #include "fsp.h"
 #include "fsp_io.h"
+#include "fsp_opt.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,21 +27,6 @@ static void usage(const char *prog) {
         "Version: NA\n"
         "(c) 2026 - Julien BOUCARON\n"
         ,prog);
-}
-
-static int parse_mode(const char *s, fsp_mode_t *out) {
-    if (strcmp(s, "overwrite") == 0) {
-        *out = FSP_OVERWRITE_ALWAYS;
-    } else if (strcmp(s, "skip") == 0) {
-        *out = FSP_SKIP_IF_EXISTS;
-    } else if (strcmp(s, "hash") == 0) {
-        *out = FSP_OVERWRITE_IF_HASH_DIFFERS;
-    } else if (strcmp(s, "fail") == 0) {
-        *out = FSP_FAIL_IF_EXISTS;
-    } else {
-        return -1;
-    }
-    return 0;
 }
 
 
@@ -130,7 +116,7 @@ int main(int argc, char **argv) {
     while ((opt = getopt(argc, argv, "m:")) != -1) {
         switch (opt) {
         case 'm':
-            if (parse_mode(optarg, &cli_mode) != 0) {
+            if (fsp_parse_mode(optarg, &cli_mode) != 0) {
                 fprintf(stderr, "Invalid mode: %s\n", optarg);
                 usage(argv[0]);
                 return 1;
