@@ -1,67 +1,92 @@
 #include "fsp_walk.h"
+#include "fsp_fs.h"
 
 #include <stdio.h>
 #include <string.h>
-#include <limits.h>
-
-#define FSP_MAX_WALK_DEPTH 1024
+#include <errno.h>
+#include <sys/stat.h>
+#include <stdint.h>
 
 typedef struct {
-    const char     *base_path;
-    const char     *base_rel;
-    int             depth;
-    fsp_walk_cb_t   cb;
-    void           *user;
-} walk_ctx_t;
+    size_t cur_files;
+    uint64_t cur_bytes;
+} fsp_walk_state_t;
 
-static int walk_dir_internal(
-    const char *base_path,
-    const char *base_rel,
+/* Forward */
+static int fsp_walk_dir_internal(
+    const char *dirpath,
     int depth,
-    fsp_walk_cb_t cb,
+    const fsp_walk_limits_t *limits,
+    fsp_walk_state_t *st,
+    fsp_batch_file_cb_t batch_file_cb,
+    fsp_batch_flush_cb_t batch_flush_cb,
     void *user
 );
 
-static int list_cb_adapter(
-    const char *name,
-    fsp_entry_type_t type,
-    void *user
-) {
-    walk_ctx_t *ctx = (walk_ctx_t *)user;
+/* Context passed to fsp_list_dir callback */
+typedef struct {
+    const char *dirpath;
+    int depth;
+    const fsp_walk_limits_t *limits;
+    fsp_walk_state_t *st;
+    fsp_batch_file_cb_t batch_file_cb;
+    fsp_batch_flush_cb_t batch_flush_cb;
+    void *user;
+} list_ctx_t;
 
-    char full_path[PATH_MAX];
-    char rel_path[PATH_MAX];
+static int on_list_entry(const char *name, fsp_entry_type_t type, void *user) {
+    list_ctx_t *ctx = user;
+    char full[PATH_MAX];
+    struct stat st;
 
-    if (snprintf(full_path, sizeof(full_path),
-                 "%s/%s", ctx->base_path, name) >= (int)sizeof(full_path)) {
-        fprintf(stderr, "fsp-walk: full path too long\n");
+    if (snprintf(full, sizeof(full), "%s/%s", ctx->dirpath, name) >= (int)sizeof(full)) {
+        fprintf(stderr, "fsp-walk: path too long: %s/%s\n",
+                ctx->dirpath, name);
         return -1;
     }
 
-    if (ctx->base_rel && ctx->base_rel[0]) {
-        if (snprintf(rel_path, sizeof(rel_path),
-                     "%s/%s", ctx->base_rel, name) >= (int)sizeof(rel_path)) {
-            fprintf(stderr, "fsp-walk: rel path too long\n");
+    if (type == FSP_ENTRY_FILE) {
+        if (stat(full, &st) != 0) {
+            perror("stat");
             return -1;
         }
-    } else {
-        if (snprintf(rel_path, sizeof(rel_path),
-                     "%s", name) >= (int)sizeof(rel_path)) {
-            fprintf(stderr, "fsp-walk: rel path too long\n");
+
+        uint64_t size = (uint64_t)st.st_size;
+
+        /* Check if batch should flush BEFORE adding */
+        if (ctx->st->cur_files > 0) {
+            if (ctx->st->cur_files >= ctx->limits->max_files ||
+                ctx->st->cur_bytes + size > ctx->limits->max_bytes) {
+
+                if (ctx->batch_flush_cb(ctx->user) != 0)
+                    return -1;
+
+                ctx->st->cur_files = 0;
+                ctx->st->cur_bytes = 0;
+            }
+        }
+
+        if (ctx->batch_file_cb(full, size, ctx->user) != 0)
+            return -1;
+
+        ctx->st->cur_files++;
+        ctx->st->cur_bytes += size;
+
+    } else if (type == FSP_ENTRY_DIR) {
+        if (ctx->depth + 1 >= FSP_MAX_WALK_DEPTH) {
+            fprintf(stderr, "fsp-walk: max recursion depth exceeded at %s\n", full);
             return -1;
         }
-    }
 
-    /* Report entry */
-    if (ctx->cb(full_path, rel_path, type, ctx->user) < 0) {
-        return -1;
-    }
-
-    /* Recurse into directories */
-    if (type == FSP_ENTRY_DIR) {
-        if (walk_dir_internal(full_path, rel_path,
-                              ctx->depth + 1,
-                              ctx->cb, ctx->user) < 0) {
+        /* Recurse immediately (depth-first) */
+        if (fsp_walk_dir_internal(
+                full,
+                ctx->depth + 1,
+                ctx->limits,
+                ctx->st,
+                ctx->batch_file_cb,
+                ctx->batch_flush_cb,
+                ctx->user) != 0) {
             return -1;
         }
     }
@@ -69,42 +94,59 @@ static int list_cb_adapter(
     return 0;
 }
 
-static int walk_dir_internal(
-    const char *base_path,
-    const char *base_rel,
+static int fsp_walk_dir_internal(
+    const char *dirpath,
     int depth,
-    fsp_walk_cb_t cb,
+    const fsp_walk_limits_t *limits,
+    fsp_walk_state_t *st,
+    fsp_batch_file_cb_t batch_file_cb,
+    fsp_batch_flush_cb_t batch_flush_cb,
     void *user
 ) {
-    if (depth > FSP_MAX_WALK_DEPTH) {
-        fprintf(stderr, "fsp-walk: max recursion depth exceeded\n");
-        return -1;
-    }
-
-    walk_ctx_t ctx = {
-        .base_path = base_path,
-        .base_rel  = base_rel,
-        .depth     = depth,
-        .cb        = cb,
-        .user      = user
+    list_ctx_t ctx = {
+        .dirpath = dirpath,
+        .depth = depth,
+        .limits = limits,
+        .st = st,
+        .batch_file_cb = batch_file_cb,
+        .batch_flush_cb = batch_flush_cb,
+        .user = user
     };
 
-    return fsp_list_dir(base_path, list_cb_adapter, &ctx);
-}
-
-int fsp_walk_recursive(
-    const char *root_path,
-    const char *root_rel,
-    fsp_walk_cb_t cb,
-    void *user
-) {
-    if (!root_path || !cb) {
+    if (fsp_list_dir(dirpath, on_list_entry, &ctx) != 0) {
+        fprintf(stderr, "fsp-walk: failed to list %s\n", dirpath);
         return -1;
     }
 
-    return walk_dir_internal(root_path,
-                             root_rel ? root_rel : "",
-                             0,
-                             cb,
-                             user);
+    return 0;
+}
+
+int fsp_walk_tree(
+    const char *root_path,
+    int depth,
+    const fsp_walk_limits_t *limits,
+    fsp_batch_file_cb_t batch_file_cb,
+    fsp_batch_flush_cb_t batch_flush_cb,
+    void *user
+) {
+    fsp_walk_state_t st = {0};
+
+    if (fsp_walk_dir_internal(
+            root_path,
+            depth,
+            limits,
+            &st,
+            batch_file_cb,
+            batch_flush_cb,
+            user) != 0) {
+        return -1;
+    }
+
+    /* Flush final batch if not empty */
+    if (st.cur_files > 0) {
+        if (batch_flush_cb(user) != 0)
+            return -1;
+    }
+
+    return 0;
 }
