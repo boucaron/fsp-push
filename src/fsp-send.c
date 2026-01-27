@@ -5,6 +5,13 @@
 #include <stdio.h>
 #include <unistd.h>
 
+#include <getopt.h>
+
+static struct option long_opts[] = {
+    { "mode", required_argument, 0, 'm' },
+    { 0, 0, 0, 0 }
+};
+
 
 static void usage(const char *prog) {
     fprintf(stderr,
@@ -63,19 +70,17 @@ static int send_end(int fd) {
 /* --- main --- */
 
 int main(int argc, char **argv) {
-    fsp_mode_t cli_mode = FSP_OVERWRITE_ALWAYS;
-    int mode_set = 0;
+    fsp_mode_t cli_mode = FSP_OVERWRITE_ALWAYS;    
 
     int opt;
-    while ((opt = getopt(argc, argv, "m:")) != -1) {
+    while ((opt = getopt_long(argc, argv, "m:", long_opts, NULL)) != -1) {
         switch (opt) {
         case 'm':
             if (fsp_parse_mode(optarg, &cli_mode) != 0) {
                 fprintf(stderr, "Invalid mode: %s\n", optarg);
                 usage(argv[0]);
                 return 1;
-            }
-            mode_set = 1;
+            }           
             break;
         default:
             usage(argv[0]);
@@ -83,10 +88,19 @@ int main(int argc, char **argv) {
         }
     }
 
-    if (optind != argc - 1) {
+    if (optind >= argc) {
+        fprintf(stderr, "Missing <source-path>\n");
         usage(argv[0]);
         return 1;
     }
+
+    if (optind + 1 != argc) {
+        fprintf(stderr, "Too many arguments\n");
+        usage(argv[0]);
+        return 1;
+    }
+
+    const char *source_path = argv[optind];
 
     fprintf(stderr, "fsp-send: sending minimal test stream\n");
 

@@ -13,6 +13,13 @@
 #include <limits.h>
 #include <fcntl.h>
 
+#include <getopt.h>
+
+static struct option long_opts[] = {
+    { "mode", required_argument, 0, 'm' },
+    { 0, 0, 0, 0 }
+};
+
 
 static void usage(const char *prog) {
     fprintf(stderr,
@@ -109,19 +116,17 @@ static int open_dest_root(const char *path, char *out_realpath, size_t out_sz) {
 
 
 int main(int argc, char **argv) {
-    fsp_mode_t cli_mode = FSP_OVERWRITE_ALWAYS;
-    int mode_set = 0;
+    fsp_mode_t cli_mode = FSP_OVERWRITE_ALWAYS;    
 
     int opt;
-    while ((opt = getopt(argc, argv, "m:")) != -1) {
+    while ((opt = getopt_long(argc, argv, "m:", long_opts, NULL)) != -1) {
         switch (opt) {
         case 'm':
             if (fsp_parse_mode(optarg, &cli_mode) != 0) {
                 fprintf(stderr, "Invalid mode: %s\n", optarg);
                 usage(argv[0]);
                 return 1;
-            }
-            mode_set = 1;
+            }            
             break;
         default:
             usage(argv[0]);
@@ -129,7 +134,14 @@ int main(int argc, char **argv) {
         }
     }
 
-    if (optind != argc - 1) {
+    if (optind >= argc) {
+        fprintf(stderr, "Missing <dest-root>\n");
+        usage(argv[0]);
+        return 1;
+    }
+
+    if (optind + 1 != argc) {
+        fprintf(stderr, "Too many arguments\n");
         usage(argv[0]);
         return 1;
     }
@@ -150,10 +162,6 @@ int main(int argc, char **argv) {
 
     // For now, just keep it so we can wire it later
     fsp_mode_t current_mode = cli_mode;
-
-    // TODO: protocol receive loop
-
-    (void)current_mode;
 
     if (ensure_dir_exists(dest_root) != 0) {
      return 1;
