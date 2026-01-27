@@ -28,3 +28,5 @@ static inline int fsp_parse_mode(const char *s, fsp_mode_t *out) {
     }
     return 0;
 }
+
+const char *fsp_mode_to_string(fsp_mode_t mode);
