@@ -10,6 +10,9 @@ typedef enum {
 /*
  * Callback for directory listing.
  * name is the entry name (not full path).
+ * 
+ * if return is 0 on success, -1 on error
+ * 
  */
 typedef int (*fsp_list_cb_t)(
     const char *name,
@@ -28,5 +31,8 @@ typedef int (*fsp_list_cb_t)(
  * Only regular files and directories are reported.
  *
  * Returns 0 on success, -1 on error.
+ * 
+ * NB: Could be used in the future to return date/time stuff => lstat call inside
+ * 
  */
 int fsp_list_dir(const char *dirpath, fsp_list_cb_t cb, void *user);
