@@ -3,36 +3,104 @@
 #include <stdint.h>
 #include <limits.h>
 #include <sys/types.h>
-
 #include <openssl/sha.h>  // OpenSSL for SHA256
 
 #include "fsp.h"
 
-
-
-/* ------------------------------------------------------------------------
+/* =========================================================================
  * File / Directory Entry Definitions
- * ------------------------------------------------------------------------ */
-typedef struct {
-    char     name[NAME_MAX + 1];   // entry name
-    uint64_t size;                 // file size in bytes
+ * ========================================================================= */
 
-    // SHA256 hash of the whole file
+/** Represents a single file in the DFS walker */
+typedef struct {
+    char     name[NAME_MAX + 1];   // Entry name
+    uint64_t size;                 // File size in bytes
+    uint32_t depth;                // Depth in the directory tree (root = 0)
+
+    // SHA256 hash of the entire file
     unsigned char file_hash[SHA256_DIGEST_LENGTH];
 
     // SHA256 hash of each FSP_CHUNK_SIZE block
-    uint64_t num_chunks;           // number of chunks actually used
-    unsigned char (*chunk_hashes)[SHA256_DIGEST_LENGTH]; // dynamic array of hashes
-
+    uint64_t num_chunks;           // Chunks actually used
+    uint64_t cap_chunks;           // Allocated capacity of chunk_hashes
+    unsigned char (*chunk_hashes)[SHA256_DIGEST_LENGTH]; // Dynamic array of chunk hashes
 } fsp_file_entry_t;
 
+/** Represents a single directory in the DFS walker */
 typedef struct {
-    char name[NAME_MAX + 1];       // directory name
+    char name[NAME_MAX + 1];       // Directory name
+    uint32_t depth;                // Depth from the root
 } fsp_dir_entry_t;
 
-/* ------------------------------------------------------------------------
- * Directory content collection
- * ------------------------------------------------------------------------ */
+/* =========================================================================
+ * Walking Callbacks
+ * ========================================================================= */
+
+/** File information passed to user callback */
+typedef struct fsp_walk_file {
+    const char *full_path;    // Absolute path to file
+    const char *rel_path;     // Path relative to root of walk
+    uint64_t    size;         // File size in bytes
+    uint32_t    depth;        // Depth from root
+} fsp_walk_file_t;
+
+/** Directory information passed to user callback */
+typedef struct fsp_walk_dir {
+    const char *dir_path;     // Path of directory
+    uint32_t    depth;        // Depth from root
+} fsp_walk_dir_t;
+
+/** Callback interface for DFS walker */
+typedef struct fsp_walk_callbacks {
+    /** Called for each file found */
+    void (*file_cb)(fsp_walk_file_t *file, void *user_data);
+
+    /** Called for each directory found */
+    void (*dir_cb)(fsp_walk_dir_t *dir, void *user_data);
+
+    /**
+     * Optional flush callback for batching.
+     * Called whenever a batch reaches thresholds or at the end of directory traversal.
+     */
+    void (*flush_cb)(void *user_data);
+
+    // Optional batching thresholds
+    size_t   max_files;    // e.g., FSP_MAX_FILES_PER_LIST
+    uint64_t max_bytes;    // e.g., FSP_MAX_FILE_LIST_BYTES
+
+    // Optional max depth: walker stops at this depth
+    uint32_t max_depth;    // 0 = no limit
+} fsp_walk_callbacks_t;
+
+/* =========================================================================
+ * DFS Walker Interface
+ * ========================================================================= */
+
+/**
+ * Walk a directory recursively in DFS order.
+ *
+ * Arguments:
+ *   root_path : absolute path to start the walk
+ *   rel_root  : base relative path (empty string for root)
+ *   cbs       : pointer to callbacks structure
+ *   user_data : opaque pointer passed to callbacks
+ *
+ * Returns:
+ *   0 on success, <0 on error
+ *
+ * Notes:
+ *   - Files larger than max_bytes are still sent as single entries.
+ *   - Small files are batched according to max_files / max_bytes.
+ *   - flush_cb may be called periodically or at the end of each directory.
+ */
+int fsp_walk(const char *root_path,
+             const char *rel_root,
+             fsp_walk_callbacks_t *cbs,
+             void *user_data);
+
+/* =========================================================================
+ * Directory content collection (optional internal use)
+ * ========================================================================= */
 typedef struct {
     fsp_file_entry_t *files;
     size_t            num_files;
@@ -43,42 +111,15 @@ typedef struct {
     size_t            cap_dirs;
 } fsp_dir_entries_t;
 
-/* ------------------------------------------------------------------------
- * FILE_LIST batching limits
- * ------------------------------------------------------------------------
- * max_files:    max number of files per command (FSP_MAX_FILES_PER_LIST)
- * max_bytes:    max total bytes per command (FSP_MAX_FILE_LIST_BYTES)
- * 
- * Notes:
- *  - Large files (> max_bytes) are still sent as a single entry.
- *  - Small files are batched up to the limits for efficiency.
- */
-typedef struct {
-    size_t   max_files;    // typically FSP_MAX_FILES_PER_LIST
-    uint64_t max_bytes;    // typically FSP_MAX_FILE_LIST_BYTES
-} fsp_batch_limits_t;
+/* =========================================================================
+ * Optional: Walker state for storing batch info and stats
+ * ========================================================================= */
+typedef struct fsp_walker_state {
+    fsp_dir_entries_t entries;     // Current directory entries
+    size_t            current_files;  // Files accumulated in batch
+    uint64_t          current_bytes;  // Bytes accumulated in batch
 
-/* ------------------------------------------------------------------------
- * Forward declaration for sender context
- * ------------------------------------------------------------------------ */
-struct fsp_sender;
+    fsp_dry_run_stats *dry_run;    // Optional: pointer to dry-run stats
 
-/* ------------------------------------------------------------------------
- * FILE_LIST batching interface
- * ------------------------------------------------------------------------
- * Adds a file to the current batch. Automatically flushes if limits are reached.
- *   - full_path: absolute path on sender
- *   - rel_path:  relative path to base directory
- *   - size:      file size in bytes
- *
- * Returns 0 on success, <0 on error.
- */
-int fsp_filelist_add_file(struct fsp_sender *s,
-                          const char *full_path,
-                          const char *rel_path,
-                          uint64_t size);
-
-/* Flushes the current batch to the receiver */
-int fsp_filelist_flush(struct fsp_sender *s);
-
-
+    uint32_t          current_depth; // Depth of the current directory
+} fsp_walker_state_t;
