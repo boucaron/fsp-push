@@ -6,15 +6,16 @@ BIN_RECV = fsp-recv
 
 OBJS_COMMON = fsp_io.o fsp_opt.o fsp_walk.o fsp_list_dir.o fsp_sender.o
 
+# Add OpenSSL include & library for SHA256
+LDLIBS = -lcrypto
+
 all: $(BIN_SEND) $(BIN_RECV)
 
 $(BIN_SEND): fsp-send.o $(OBJS_COMMON)
-	$(CC) $(CFLAGS) -o $@ $^
+	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
 
 $(BIN_RECV): fsp-recv.o $(OBJS_COMMON)
-	$(CC) $(CFLAGS) -o $@ $^
-
-
+	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
 
 # ----------------------------
 # Tests
@@ -23,10 +24,10 @@ TEST_OBJS = tests/test_fsp_dry_run.c tests/demo_fsp_dry_run.c
 TEST_BINS = test_fsp_dry_run demo_fsp_dry_run
 
 test_fsp_dry_run: tests/test_fsp_dry_run.c $(OBJS_COMMON)
-	$(CC) $(CFLAGS) -o $@ $^
+	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
 
 demo_fsp_dry_run: tests/demo_fsp_dry_run.c $(OBJS_COMMON)
-	$(CC) $(CFLAGS) -o $@ $^
+	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
 
 .PHONY: tests
 tests: $(TEST_BINS)

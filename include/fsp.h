@@ -22,7 +22,11 @@ typedef enum {
 } fsp_mode_t;
 
 // Limits
-#define FSP_CHUNK_SIZE (128ULL * 1024ULL * 1024ULL)
-#define FSP_MAX_FILES_PER_LIST 1024
-#define FSP_MAX_WALK_DEPTH 1024
+#define FSP_CHUNK_SIZE (128ULL * 1024ULL * 1024ULL) // 128 MB
+#define FSP_MAX_FILES_PER_LIST 1024 // 1024 Files max
+// Maximum total bytes in a single file_list command
+// Most filesystems will have many small files, but a single file >16 GB
+// will be sent as one entry, which is fine. This limit avoids huge messages.
+#define FSP_MAX_FILE_LIST_BYTES (16ULL * 1024ULL * 1024ULL * 1024ULL) // 16 GB
+#define FSP_MAX_WALK_DEPTH 1024 // Arbitrary limit
 

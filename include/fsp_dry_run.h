@@ -43,7 +43,7 @@ typedef struct {
 } fsp_dry_run_stats;
 
 
-static inline size_t size_to_bucket(uint64_t size)
+static inline size_t fsp_size_to_bucket(uint64_t size)
 {
     static const uint64_t limits[FS_SIZE_BUCKETS - 1] = {
         1ULL << 10,
@@ -85,7 +85,7 @@ static inline void fsp_dry_run_add_file(fsp_dry_run_stats *s, uint64_t size)
     s->file_count++;
     s->file_total_size += size;
 
-    size_t bucket = size_to_bucket(size);
+    size_t bucket = fsp_size_to_bucket(size);
     if (bucket < FS_SIZE_BUCKETS)
         s->size_buckets[bucket]++;
 }
@@ -131,7 +131,7 @@ fsp_dry_run_compute_simulation_metrics(fsp_dry_run_stats *s)
 
 
 static void
-print_size(uint64_t bytes, char *buf, size_t buflen)
+fsp_print_size(uint64_t bytes, char *buf, size_t buflen)
 {
     const char *units[] = { "B", "KB", "MB", "GB", "TB" };
     double size = (double)bytes;
@@ -146,7 +146,7 @@ print_size(uint64_t bytes, char *buf, size_t buflen)
 }
 
 static void
-print_time (double seconds, char *buf, size_t buflen)
+fsp_print_time (double seconds, char *buf, size_t buflen)
 {
     uint64_t s = (seconds < 0) ? 0 : (uint64_t)(seconds + 0.5);
 
@@ -176,7 +176,7 @@ fsp_dry_run_report(const fsp_dry_run_stats *s)
 
   
     /* Filesystem shape */
-    print_size(s->file_total_size, buf, sizeof(buf));
+    fsp_print_size(s->file_total_size, buf, sizeof(buf));
     fprintf(stderr, "Filesystem:\n");
     fprintf(stderr, "  Directories : %" PRIu64 "\n", s->dir_count);
     fprintf(stderr, "  Files       : %" PRIu64 "\n", s->file_count);
@@ -186,7 +186,7 @@ fsp_dry_run_report(const fsp_dry_run_stats *s)
 
     /* Hashing */
     fprintf(stderr, "Hashing:\n");
-    print_time(s->hashing_time, buf, sizeof(buf));      
+    fsp_print_time(s->hashing_time, buf, sizeof(buf));      
     fprintf(stderr, "  Time       : %s\n", buf);
     fprintf(stderr, "  Throughput : %.2f MB/s\n", s->hashing_throughput);
 
@@ -256,26 +256,26 @@ fsp_dry_run_report(const fsp_dry_run_stats *s)
     /* Simulation & Observed Metrics */
     /* ------------------ */
     fprintf(stderr, "Simulation / Observed Metrics:\n");
-    print_size(s->file_total_size, buf, sizeof(buf));
+    fsp_print_size(s->file_total_size, buf, sizeof(buf));
     fprintf(stderr, "    Data size            : %s\n", buf); 
-    print_size(s->protocol_total_size, buf, sizeof(buf));
+    fsp_print_size(s->protocol_total_size, buf, sizeof(buf));
     fprintf(stderr, "    Protocol data size   : %s\n", buf); 
     /* Simulation */
     fprintf(stderr, "  Simulation:\n");
     fprintf(stderr, "    Throughput           : %8.2f MB/s\n", s->simulation_cfg.throughput / (1024.0 * 1024.0));
     fprintf(stderr, "    RTT                  : %7.3f ms\n", s->simulation_cfg.latencyRtt);
-    print_time( s->simulation_data_time, buf, sizeof(buf));      
+    fsp_print_time( s->simulation_data_time, buf, sizeof(buf));      
     fprintf(stderr, "    Data time            : %s\n", buf);
-    print_time( s->simulation_protocol_time, buf, sizeof(buf));      
+    fsp_print_time( s->simulation_protocol_time, buf, sizeof(buf));      
     fprintf(stderr, "    Protocol time        : %s\n", buf);
 
     /* Observed */
     fprintf(stderr, "  Observed:\n");
     fprintf(stderr, "    Throughput           : %8.2f MB/s\n", s->observed_perf.throughput / (1024.0 * 1024.0));
     fprintf(stderr, "    RTT                  : %7.3f ms\n", s->observed_perf.latencyRtt);
-    print_time( s->observed_data_time, buf, sizeof(buf));      
+    fsp_print_time( s->observed_data_time, buf, sizeof(buf));      
     fprintf(stderr, "    Data time            : %s\n", buf);
-    print_time( s->observed_protocol_time, buf, sizeof(buf));      
+    fsp_print_time( s->observed_protocol_time, buf, sizeof(buf));      
     fprintf(stderr, "    Protocol time        : %s\n", buf);
     fprintf(stderr, "\n");
 

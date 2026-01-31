@@ -9,14 +9,14 @@ int main(void)
     /* Test size_to_bucket */
     /* ------------------ */
 
-    assert(size_to_bucket(0) == 0);
-    assert(size_to_bucket(1) == 0);
-    assert(size_to_bucket(1024) == 0);       // 1 KB
-    assert(size_to_bucket(1025) == 1);       // >1 KB
-    assert(size_to_bucket(4 * 1024) == 1);   // 4 KB
-    assert(size_to_bucket(4 * 1024 + 1) == 2);
-    assert(size_to_bucket(100ULL * 1024 * 1024 * 1024) == 14); // 100 GB
-    assert(size_to_bucket(101ULL * 1024 * 1024 * 1024) == 15); // >100 GB
+    assert(fsp_size_to_bucket(0) == 0);
+    assert(fsp_size_to_bucket(1) == 0);
+    assert(fsp_size_to_bucket(1024) == 0);       // 1 KB
+    assert(fsp_size_to_bucket(1025) == 1);       // >1 KB
+    assert(fsp_size_to_bucket(4 * 1024) == 1);   // 4 KB
+    assert(fsp_size_to_bucket(4 * 1024 + 1) == 2);
+    assert(fsp_size_to_bucket(100ULL * 1024 * 1024 * 1024) == 14); // 100 GB
+    assert(fsp_size_to_bucket(101ULL * 1024 * 1024 * 1024) == 15); // >100 GB
 
     printf("size_to_bucket tests passed.\n");
 
@@ -42,10 +42,10 @@ int main(void)
     stats.hashing_throughput = 10.0;
 
    // Update buckets
-    stats.size_buckets[size_to_bucket(1024)]++;
-    stats.size_buckets[size_to_bucket(5 * 1024)]++;
-    stats.size_buckets[size_to_bucket(20 * 1024)]++;
-    stats.size_buckets[size_to_bucket(2 * 1024 * 1024)]++;
+    stats.size_buckets[fsp_size_to_bucket(1024)]++;
+    stats.size_buckets[fsp_size_to_bucket(5 * 1024)]++;
+    stats.size_buckets[fsp_size_to_bucket(20 * 1024)]++;
+    stats.size_buckets[fsp_size_to_bucket(2 * 1024 * 1024)]++;
 
     // Check bucket counts
     assert(stats.size_buckets[0] == 1);
