@@ -97,6 +97,7 @@ int main(int argc, char **argv) {
     }
 
     printf("\nDry-run completed. Summary:\n");
+    fsp_dry_run_compute_simulation_metrics(&dry_run_stats);
     fsp_dry_run_report(&dry_run_stats);
 
     return 0;
