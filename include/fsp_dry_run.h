@@ -18,6 +18,16 @@ typedef struct {
     fsp_simulation_cfg simulation_cfg; // Simulation for ETA
     fsp_simulation_cfg observed_perf; // Measured throughput / RTT at runtime
     
+
+    uint64_t protocol_filelist_calls;
+    double simulation_data_time;
+    double simulation_protocol_time;
+
+    double observed_data_time;
+    double observed_protocol_time;
+
+
+    // File stats part
     uint64_t dir_count; // Number of directories
     uint64_t file_count; // Number of files
 
@@ -89,6 +99,12 @@ static inline void fsp_dry_run_add_hashing(fsp_dry_run_stats *s, double seconds,
         s->hashing_throughput = (double)hashed_bytes / (1024.0 * 1024.0) / seconds;
 }
 
+/* Add a protocol call to filelist */
+static inline void fsp_dry_run_add_protocol_filelist_call(fsp_dry_run_stats *s) {
+    if (!s) return;
+    s->protocol_filelist_calls++;
+}
+
 /* Reset all stats */
 static inline void fsp_dry_run_reset(fsp_dry_run_stats *s)
 {
@@ -120,18 +136,7 @@ fsp_dry_run_report(const fsp_dry_run_stats *s)
 
     fprintf(stderr, "\n=== FSP Dry Run Report ===\n\n");
 
-    /* Simulation vs observed */
-    fprintf(stderr, "Performance (I/O):\n");
-    fprintf(stderr, "  Assumed  : %8.2f MB/s, RTT %7.3f ms\n",
-            s->simulation_cfg.throughput / (1024.0 * 1024.0),
-            s->simulation_cfg.latencyRtt);
-
-    fprintf(stderr, "  Observed : %8.2f MB/s, RTT %7.3f ms\n",
-            s->observed_perf.throughput / (1024.0 * 1024.0),
-            s->observed_perf.latencyRtt);
-
-    fprintf(stderr, "\n");
-
+  
     /* Filesystem shape */
     print_size(s->total_size, buf, sizeof(buf));
     fprintf(stderr, "Filesystem:\n");
@@ -204,6 +209,31 @@ fsp_dry_run_report(const fsp_dry_run_stats *s)
                 info,
                 bar);
     }
+
+    fprintf(stderr, "\n");
+
+
+    /* ------------------ */
+    /* Simulation & Observed Metrics */
+    /* ------------------ */
+    fprintf(stderr, "Simulation / Observed Metrics:\n");
+
+    /* Simulation */
+    fprintf(stderr, "  Simulation:\n");
+    fprintf(stderr, "    Throughput           : %8.2f MB/s\n", s->simulation_cfg.throughput / (1024.0 * 1024.0));
+    fprintf(stderr, "    RTT                  : %7.3f ms\n", s->simulation_cfg.latencyRtt);
+    fprintf(stderr, "    Data time            : %.3f s\n", s->simulation_data_time);
+    fprintf(stderr, "    Protocol time        : %.3f s\n", s->simulation_protocol_time);    
+
+    /* Observed */
+    fprintf(stderr, "  Observed:\n");
+    fprintf(stderr, "    Throughput           : %8.2f MB/s\n", s->observed_perf.throughput / (1024.0 * 1024.0));
+    fprintf(stderr, "    RTT                  : %7.3f ms\n", s->observed_perf.latencyRtt);
+    fprintf(stderr, "    Data time            : %.3f s\n", s->observed_data_time);
+    fprintf(stderr, "    Protocol time        : %.3f s\n", s->observed_protocol_time);
+    fprintf(stderr, "\n");
+
+    fprintf(stderr, "    Protocol filelist calls: %" PRIu64 "\n", s->protocol_filelist_calls);
 
     fprintf(stderr, "\n");
 }
