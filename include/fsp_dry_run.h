@@ -145,10 +145,32 @@ print_size(uint64_t bytes, char *buf, size_t buflen)
     snprintf(buf, buflen, "%.2f %s", size, units[u]);
 }
 
+static void
+print_time (double seconds, char *buf, size_t buflen)
+{
+    uint64_t s = (seconds < 0) ? 0 : (uint64_t)(seconds + 0.5);
+
+    uint64_t days    = s / 86400;
+    if (days > 10000)
+        days = 10000; // clamp
+
+    s %= 86400;
+    uint64_t hours   = s / 3600;
+    s %= 3600;
+    uint64_t minutes = s / 60;
+    s %= 60;
+
+    // Fixed-width, right-aligned
+    // "DDDDDd HHh MMm SSs" → 19 chars
+    snprintf(buf, buflen,
+             "%5" PRIu64 "d %02" PRIu64 "h %02" PRIu64 "m %02" PRIu64 "s",
+             days, hours, minutes, s);
+}
+
 void
 fsp_dry_run_report(const fsp_dry_run_stats *s)
 {
-    char buf[32];
+    char buf[64];
 
     fprintf(stderr, "\n=== FSP Dry Run Report ===\n\n");
 
@@ -164,7 +186,8 @@ fsp_dry_run_report(const fsp_dry_run_stats *s)
 
     /* Hashing */
     fprintf(stderr, "Hashing:\n");
-    fprintf(stderr, "  Time       : %.3f s\n", s->hashing_time);
+    print_time(s->hashing_time, buf, sizeof(buf));      
+    fprintf(stderr, "  Time       : %s\n", buf);
     fprintf(stderr, "  Throughput : %.2f MB/s\n", s->hashing_throughput);
 
     fprintf(stderr, "\n");
@@ -233,7 +256,7 @@ fsp_dry_run_report(const fsp_dry_run_stats *s)
     /* Simulation & Observed Metrics */
     /* ------------------ */
     fprintf(stderr, "Simulation / Observed Metrics:\n");
-
+    print_size(s->file_total_size, buf, sizeof(buf));
     fprintf(stderr, "    Data size            : %s\n", buf); 
     print_size(s->protocol_total_size, buf, sizeof(buf));
     fprintf(stderr, "    Protocol data size   : %s\n", buf); 
@@ -241,15 +264,19 @@ fsp_dry_run_report(const fsp_dry_run_stats *s)
     fprintf(stderr, "  Simulation:\n");
     fprintf(stderr, "    Throughput           : %8.2f MB/s\n", s->simulation_cfg.throughput / (1024.0 * 1024.0));
     fprintf(stderr, "    RTT                  : %7.3f ms\n", s->simulation_cfg.latencyRtt);
-    fprintf(stderr, "    Data time            : %.3f s\n", s->simulation_data_time);
-    fprintf(stderr, "    Protocol time        : %.3f s\n", s->simulation_protocol_time);    
+    print_time( s->simulation_data_time, buf, sizeof(buf));      
+    fprintf(stderr, "    Data time            : %s\n", buf);
+    print_time( s->simulation_protocol_time, buf, sizeof(buf));      
+    fprintf(stderr, "    Protocol time        : %s\n", buf);
 
     /* Observed */
     fprintf(stderr, "  Observed:\n");
     fprintf(stderr, "    Throughput           : %8.2f MB/s\n", s->observed_perf.throughput / (1024.0 * 1024.0));
     fprintf(stderr, "    RTT                  : %7.3f ms\n", s->observed_perf.latencyRtt);
-    fprintf(stderr, "    Data time            : %.3f s\n", s->observed_data_time);
-    fprintf(stderr, "    Protocol time        : %.3f s\n", s->observed_protocol_time);
+    print_time( s->observed_data_time, buf, sizeof(buf));      
+    fprintf(stderr, "    Data time            : %s\n", buf);
+    print_time( s->observed_protocol_time, buf, sizeof(buf));      
+    fprintf(stderr, "    Protocol time        : %s\n", buf);
     fprintf(stderr, "\n");
 
 
