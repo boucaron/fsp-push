@@ -113,6 +113,23 @@ static inline void fsp_dry_run_reset(fsp_dry_run_stats *s)
 }
 
 
+static inline void
+fsp_dry_run_compute_simulation_metrics(fsp_dry_run_stats *s)
+{
+    // Compute simulation data time: total_size / throughput
+    if (s->simulation_cfg.throughput > 0.0) {
+        s->simulation_data_time = (double)s->total_size / s->simulation_cfg.throughput;
+    } else {
+        s->simulation_data_time = 0.0;
+    }
+
+    // Compute simulation protocol time: number of filelist calls × RTT
+    s->simulation_protocol_time = s->protocol_filelist_calls * s->simulation_cfg.latencyRtt / 1000.0;
+    // RTT is in ms, convert to seconds
+}
+
+
+
 
 static void
 print_size(uint64_t bytes, char *buf, size_t buflen)

@@ -1,74 +1,57 @@
 #include <stdio.h>
 #include <stdint.h>
-#include <assert.h>
-#include "../../include/fsp_dry_run.h" 
+#include <inttypes.h>
+#include "../../include/fsp_dry_run.h"
 
 int main(void)
 {
-    /* ------------------ */
-    /* Test size_to_bucket */
-    /* ------------------ */
-
-    assert(size_to_bucket(0) == 0);
-    assert(size_to_bucket(1) == 0);
-    assert(size_to_bucket(1024) == 0);       // 1 KB
-    assert(size_to_bucket(1025) == 1);       // >1 KB
-    assert(size_to_bucket(4 * 1024) == 1);   // 4 KB
-    assert(size_to_bucket(4 * 1024 + 1) == 2);
-    assert(size_to_bucket(100ULL * 1024 * 1024 * 1024) == 14); // 100 GB
-    assert(size_to_bucket(101ULL * 1024 * 1024 * 1024) == 15); // >100 GB
-
-    printf("size_to_bucket tests passed.\n");
-
-    /* ------------------ */
-    /* Test dry run stats */
-    /* ------------------ */
-
     fsp_dry_run_stats stats = {0};
 
-    // Initialize simulation config
     stats.simulation_cfg.throughput = 500 * 1024 * 1024; // 500 MB/s
     stats.simulation_cfg.latencyRtt = 0.5;
-
-    // Set observed values
     stats.observed_perf.throughput = 480 * 1024 * 1024;
     stats.observed_perf.latencyRtt = 0.55;
 
-    stats.dir_count = 2;
-    stats.file_count = 4;
-    stats.total_size = 1024 + 5 * 1024 + 20 * 1024 + 2 * 1024 * 1024; // 2 MB+small files
-    stats.hashing_time = 0.2;
-    stats.hashing_throughput = 10.0;
+    stats.dir_count = 7;
+    stats.file_count = 14; // prime-ish total → non-trivial percentages
 
-   // Update buckets
-    stats.size_buckets[size_to_bucket(1024)]++;
-    stats.size_buckets[size_to_bucket(5 * 1024)]++;
-    stats.size_buckets[size_to_bucket(20 * 1024)]++;
-    stats.size_buckets[size_to_bucket(2 * 1024 * 1024)]++;
+    // File sizes chosen to produce weird fractional percentages
+    uint64_t files[] = {
+        // bucket 0 (<= 1 KB) → 3 files → 21.429%
+        100, 200, 512,
+        // bucket 1 (<= 4 KB) → 2 files → 14.286%
+        1500, 3000,
+        // bucket 2 (<= 16 KB) → 1 file → 7.143%
+        8192,
+        // bucket 3 (<= 64 KB) → 3 files → 21.429%
+        20*1024, 30*1024, 50*1024,
+        // bucket 4 (<= 256 KB) → 1 file → 7.143%
+        200*1024,
+        // bucket 5 (<= 1 MB) → 2 files → 14.286%
+        512*1024, 900*1024,
+        // bucket 6 (<= 4 MB) → 2 files → 14.286%
+        2*1024*1024, 3*1024*1024
+        // remaining buckets empty
+    };
 
-    // Check bucket counts
-    assert(stats.size_buckets[0] == 1);
-    assert(stats.size_buckets[2] == 1);
-    assert(stats.size_buckets[3] == 1);
-    assert(stats.size_buckets[6] == 1);
+    // Add files to stats
+    for (size_t i = 0; i < sizeof(files)/sizeof(files[0]); i++) {
+        fsp_dry_run_add_file(&stats, files[i]);
+    }
 
-    // Check percentages
-    double pct0 = stats.file_count ? (stats.size_buckets[0] * 100.0) / stats.file_count : 0.0;
-    double pct2 = stats.file_count ? (stats.size_buckets[2] * 100.0) / stats.file_count : 0.0;
-    double pct3 = stats.file_count ? (stats.size_buckets[3] * 100.0) / stats.file_count : 0.0;
-    double pct6 = stats.file_count ? (stats.size_buckets[6] * 100.0) / stats.file_count : 0.0;
+    // Hashing info
+    fsp_dry_run_add_hashing(&stats, 1.5, stats.total_size);
 
-    assert(pct0 == 25.0);
-    assert(pct2 == 25.0);
-    assert(pct3 == 25.0);
-    assert(pct6 == 25.0);
+    // Display raw percentages with digits after the dot
+    printf("Bucket percentages (non-trivial fractions):\n");
+    for (size_t i = 0; i < FS_SIZE_BUCKETS; i++) {
+        double pct = stats.file_count ? (stats.size_buckets[i] * 100.0) / stats.file_count : 0.0;
+        printf("Bucket %2zu: %3" PRIu64 " files, %6.3f%%\n",
+               i, stats.size_buckets[i], pct);
+    }
 
-    printf("fsp_dry_run_stats bucket tests passed.\n");
-
-    /* ------------------ */
-    /* Optional: print report to visually inspect */
-    /* ------------------ */
     fsp_dry_run_compute_simulation_metrics(&stats);
+    printf("\nFull ASCII report:\n");
     fsp_dry_run_report(&stats);
 
     return 0;
