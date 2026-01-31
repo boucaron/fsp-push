@@ -4,7 +4,7 @@ CFLAGS ?= -O2 -Wall -Wextra -I../include
 BIN_SEND = fsp-send
 BIN_RECV = fsp-recv
 
-OBJS_COMMON = fsp_io.o fsp_opt.o fsp_walk.o fsp_list_dir.o fsp_sender.o
+OBJS_COMMON = fsp_io.o fsp_opt.o fsp_walk.o
 
 # Add OpenSSL include & library for SHA256
 LDLIBS = -lcrypto

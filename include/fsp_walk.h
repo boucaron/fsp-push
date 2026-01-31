@@ -7,6 +7,7 @@
 #include <openssl/sha.h>  // OpenSSL for SHA256
 
 #include "fsp.h"
+#include "fsp_dry_run.h" 
 
 /* =========================================================================
  * File / Directory Entry Definitions
@@ -73,6 +74,57 @@ typedef struct fsp_walk_callbacks {
     uint32_t max_depth;    // 0 = no limit
 } fsp_walk_callbacks_t;
 
+
+
+/* =========================================================================
+ * Directory content collection (internal use)
+ * ========================================================================= */
+typedef struct {
+    fsp_file_entry_t *files;
+    size_t            num_files;
+    size_t            cap_files;
+
+    fsp_dir_entry_t  *dirs;
+    size_t            num_dirs;
+    size_t            cap_dirs;
+} fsp_dir_entries_t;
+
+/* =========================================================================
+ * Walker state for batching and dry-run stats
+ * ========================================================================= */
+typedef enum {
+    FSP_WALK_MODE_DRY_RUN = 0,  // Only scan, populate fsp_dry_run_stats
+    FSP_WALK_MODE_RUN = 1          // Walk, compute SHA256, build batches, send data
+} fsp_walker_mode_t;
+
+typedef struct fsp_walker_state {
+    fsp_dir_entries_t entries;       // Current directory entries (files + dirs)
+
+    // Current batch tracking
+    size_t   current_files;          // Files accumulated in current batch
+    uint64_t current_bytes;          // Bytes accumulated in current batch
+    bool     flush_needed;           // True if batch should be flushed
+
+    // Dry-run stats (mandatory)
+    fsp_dry_run_stats *dry_run;      // Pointer to dry-run stats (must not be NULL)
+
+    // Depth tracking
+    uint32_t current_depth;          // Depth of the current directory
+    uint32_t max_depth;              // Maximum depth to traverse (0 = no limit)
+
+    // Batching thresholds
+    size_t   max_files;              // Max files per batch (e.g., FSP_MAX_FILES_PER_LIST)
+    uint64_t max_bytes;              // Max bytes per batch (e.g., FSP_MAX_FILE_LIST_BYTES)
+
+    // Mode of operation
+    fsp_walker_mode_t mode;          // DRY_RUN or RUN
+
+    // Optional: user pointer for callbacks
+    void    *user_data;              // Could be sender context, etc.
+} fsp_walker_state_t;
+
+
+
 /* =========================================================================
  * DFS Walker Interface
  * ========================================================================= */
@@ -94,40 +146,8 @@ typedef struct fsp_walk_callbacks {
  *   - Small files are batched according to max_files / max_bytes.
  *   - flush_cb may be called periodically or at the end of each directory.
  */
-int fsp_walk(const char *root_path,
-             const char *rel_root,
-             fsp_walk_callbacks_t *cbs,
-             void *user_data);
-
-/* =========================================================================
- * Directory content collection (internal use)
- * ========================================================================= */
-typedef struct {
-    fsp_file_entry_t *files;
-    size_t            num_files;
-    size_t            cap_files;
-
-    fsp_dir_entry_t  *dirs;
-    size_t            num_dirs;
-    size_t            cap_dirs;
-} fsp_dir_entries_t;
-
-/* =========================================================================
- * Walker state for batching and dry-run stats
- * ========================================================================= */
-typedef struct fsp_walker_state {
-    fsp_dir_entries_t entries;     // Current directory entries (files + dirs)
-
-    size_t   current_files;        // Files accumulated in current batch
-    uint64_t current_bytes;        // Bytes accumulated in current batch
-
-    fsp_dry_run_stats *dry_run;    // Pointer to dry-run stats (mandatory)
-
-    uint32_t current_depth;        // Depth of the current directory
-    uint32_t max_depth;            // Max depth to traverse (0 = no limit)
-
-    size_t   max_files;            // Max files per batch (e.g., FSP_MAX_FILES_PER_LIST)
-    uint64_t max_bytes;            // Max bytes per batch (e.g., FSP_MAX_FILE_LIST_BYTES)
-
-    bool flush_needed;             // True if batch should be flushed
-} fsp_walker_state_t;
+int fsp_walk_dir_recursive(const char *root_path,
+                                  const char *rel_path,
+                                  fsp_walk_callbacks_t *cbs,
+                                  fsp_walker_state_t *state,
+                                  fsp_walker_mode_t mode);
