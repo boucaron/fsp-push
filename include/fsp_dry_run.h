@@ -32,6 +32,7 @@ typedef struct {
 
 } fsp_dry_run_stats;
 
+
 static inline size_t size_to_bucket(uint64_t size)
 {
     static const uint64_t limits[FS_SIZE_BUCKETS - 1] = {
@@ -58,6 +59,43 @@ static inline size_t size_to_bucket(uint64_t size)
     }
     return FS_SIZE_BUCKETS - 1;
 }
+
+
+/* Add a directory */
+static inline void fsp_dry_run_add_dir(fsp_dry_run_stats *s)
+{
+    if (!s) return;
+    s->dir_count++;
+}
+
+/* Add a file of given size (bytes) */
+static inline void fsp_dry_run_add_file(fsp_dry_run_stats *s, uint64_t size)
+{
+    if (!s) return;
+    s->file_count++;
+    s->total_size += size;
+
+    size_t bucket = size_to_bucket(size);
+    if (bucket < FS_SIZE_BUCKETS)
+        s->size_buckets[bucket]++;
+}
+
+/* Add hashing time (seconds) and optionally recalc throughput in MB/s */
+static inline void fsp_dry_run_add_hashing(fsp_dry_run_stats *s, double seconds, uint64_t hashed_bytes)
+{
+    if (!s) return;
+    s->hashing_time += seconds;
+    if (seconds > 0)
+        s->hashing_throughput = (double)hashed_bytes / (1024.0 * 1024.0) / seconds;
+}
+
+/* Reset all stats */
+static inline void fsp_dry_run_reset(fsp_dry_run_stats *s)
+{
+    if (!s) return;
+    memset(s, 0, sizeof(*s));
+}
+
 
 
 static void

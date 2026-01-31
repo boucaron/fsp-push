@@ -1,20 +1,21 @@
 #include <stdio.h>
 #include <stdint.h>
+#include <inttypes.h>
 #include "../../include/fsp_dry_run.h"
 
 int main(void)
 {
     fsp_dry_run_stats stats = {0};
 
-    stats.simulation_cfg.throughput = 500 * 1024 * 1024;
+    stats.simulation_cfg.throughput = 500 * 1024 * 1024; // 500 MB/s
     stats.simulation_cfg.latencyRtt = 0.5;
     stats.observed_perf.throughput = 480 * 1024 * 1024;
     stats.observed_perf.latencyRtt = 0.55;
 
     stats.dir_count = 7;
-    stats.file_count = 14; // prime-ish total for non-trivial percentages
+    stats.file_count = 14; // prime-ish total → non-trivial percentages
 
-    // File sizes to produce weird fractional percentages
+    // File sizes chosen to produce weird fractional percentages
     uint64_t files[] = {
         // bucket 0 (<= 1 KB) → 3 files → 21.429%
         100, 200, 512,
@@ -33,15 +34,15 @@ int main(void)
         // remaining buckets empty
     };
 
+    // Add files to stats
     for (size_t i = 0; i < sizeof(files)/sizeof(files[0]); i++) {
-        stats.total_size += files[i];
-        stats.size_buckets[size_to_bucket(files[i])]++;
+        fsp_dry_run_add_file(&stats, files[i]);
     }
 
-    stats.hashing_time = 1.5;
-    stats.hashing_throughput = 20.0;
+    // Hashing info
+    fsp_dry_run_add_hashing(&stats, 1.5, stats.total_size);
 
-    // Print percentages with digits after the dot
+    // Display raw percentages with digits after the dot
     printf("Bucket percentages (non-trivial fractions):\n");
     for (size_t i = 0; i < FS_SIZE_BUCKETS; i++) {
         double pct = stats.file_count ? (stats.size_buckets[i] * 100.0) / stats.file_count : 0.0;
@@ -49,7 +50,7 @@ int main(void)
                i, stats.size_buckets[i], pct);
     }
 
-    // Print the full report with ASCII bars
+    printf("\nFull ASCII report:\n");
     fsp_dry_run_report(&stats);
 
     return 0;

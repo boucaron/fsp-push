@@ -7,6 +7,9 @@
 typedef struct {
     char     name[NAME_MAX + 1];   // entry name
     uint64_t size;                 // for files
+
+    // TODO: Add SHA256 Chunks
+    // TODO: Add SHA256 File Hash
 } fsp_file_entry_t;
 
 typedef struct {
@@ -28,6 +31,9 @@ typedef struct {
     size_t   max_files;    // e.g. FSP_MAX_FILES_PER_LIST
     uint64_t max_bytes;    // e.g. 512MB, 1GB, etc
 } fsp_batch_limits_t;
+
+
+
 
 /* Forward decl for sender */
 struct fsp_sender;
