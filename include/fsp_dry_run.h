@@ -234,9 +234,9 @@ fsp_dry_run_report(const fsp_dry_run_stats *s)
     /* ------------------ */
     fprintf(stderr, "Simulation / Observed Metrics:\n");
 
-    fprintf(stderr, "    Data size            : %" PRIu64 "\n", s->file_total_size); 
-    fprintf(stderr, "    Protocol data size   : %" PRIu64 "\n", s->protocol_total_size);
-
+    fprintf(stderr, "    Data size            : %s\n", buf); 
+    print_size(s->protocol_total_size, buf, sizeof(buf));
+    fprintf(stderr, "    Protocol data size   : %s\n", buf); 
     /* Simulation */
     fprintf(stderr, "  Simulation:\n");
     fprintf(stderr, "    Throughput           : %8.2f MB/s\n", s->simulation_cfg.throughput / (1024.0 * 1024.0));
