@@ -129,6 +129,12 @@ typedef struct fsp_walker_state {
  * DFS Walker Interface
  * ========================================================================= */
 
+ int fsp_walk(const char *root_path,
+             const char *rel_root,
+             fsp_walk_callbacks_t *cbs,
+             void *user_data,
+             fsp_walker_mode_t mode);
+
 /**
  * Walk a directory recursively in DFS order.
  *

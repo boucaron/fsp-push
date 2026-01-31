@@ -20,13 +20,14 @@ $(BIN_RECV): fsp-recv.o $(OBJS_COMMON)
 # ----------------------------
 # Tests
 # ----------------------------
-TEST_OBJS = tests/test_fsp_dry_run.c tests/demo_fsp_dry_run.c
-TEST_BINS = test_fsp_dry_run demo_fsp_dry_run
+TEST_OBJS = tests/test_fsp_dry_run.c tests/demo_fsp_dry_run.c tests/demo_fsp_walk.c
+TEST_BINS = test_fsp_dry_run demo_fsp_dry_run demo_fsp_walk
 
 test_fsp_dry_run: tests/test_fsp_dry_run.c $(OBJS_COMMON)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
-
 demo_fsp_dry_run: tests/demo_fsp_dry_run.c $(OBJS_COMMON)
+	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
+demo_fsp_walk: tests/demo_fsp_walk.c $(OBJS_COMMON)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
 
 .PHONY: tests
