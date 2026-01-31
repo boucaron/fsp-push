@@ -10,6 +10,11 @@
 #include <errno.h>
 #include <stdbool.h>
 
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 /* ------------------------------------------------------------------------
  * Public walker interface
  * ------------------------------------------------------------------------ */
@@ -52,7 +57,7 @@ int fsp_walk(const char *root_path,
 }
 
 /* ------------------------------------------------------------------------
- * Internal recursive DFS walker
+ * Internal recursive DFS walker (handles junctions / symlinks to prevent loops)
  * ------------------------------------------------------------------------ */
 int fsp_walk_dir_recursive(const char *root_path,
                            const char *rel_path,
@@ -81,10 +86,30 @@ int fsp_walk_dir_recursive(const char *root_path,
             snprintf(rel_entry, sizeof(rel_entry), "%s", entry->d_name);
 
         struct stat st;
+
+        /* On POSIX: use lstat to detect symlinks */
+#ifdef _WIN32
+        if (GetFileAttributesA(full_path) != INVALID_FILE_ATTRIBUTES) {
+            DWORD attrs = GetFileAttributesA(full_path);
+            if (attrs & FILE_ATTRIBUTE_REPARSE_POINT) {
+                // Skip junction / symlink
+                continue;
+            }
+        }
         if (stat(full_path, &st) < 0) {
             perror("stat");
             continue;
         }
+#else
+        if (lstat(full_path, &st) < 0) {
+            perror("lstat");
+            continue;
+        }
+        if (S_ISLNK(st.st_mode)) {
+            // Skip symlinks to avoid loops
+            continue;
+        }
+#endif
 
         if (S_ISDIR(st.st_mode)) {
             if (state->max_depth && state->current_depth >= state->max_depth)
@@ -103,7 +128,6 @@ int fsp_walk_dir_recursive(const char *root_path,
             if (mode == FSP_WALK_MODE_DRY_RUN) {
                 fsp_dry_run_add_dir(state->dry_run);
             }
-            // TODO: RUN mode: prepare entries, batching, etc.
 
             // Recurse into subdirectory
             state->current_depth++;
