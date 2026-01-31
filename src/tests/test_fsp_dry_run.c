@@ -50,6 +50,7 @@ int main(void)
                i, stats.size_buckets[i], pct);
     }
 
+    fsp_dry_run_compute_simulation_metrics(&stats);
     printf("\nFull ASCII report:\n");
     fsp_dry_run_report(&stats);
 
