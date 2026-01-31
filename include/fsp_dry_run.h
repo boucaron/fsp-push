@@ -19,7 +19,7 @@ typedef struct {
     fsp_simulation_cfg observed_perf; // Measured throughput / RTT at runtime
     
 
-    uint64_t protocol_filelist_calls;
+    uint64_t protocol_total_size;
     double simulation_data_time;
     double simulation_protocol_time;
 
@@ -31,7 +31,7 @@ typedef struct {
     uint64_t dir_count; // Number of directories
     uint64_t file_count; // Number of files
 
-    uint64_t total_size; // total bytes across all files
+    uint64_t file_total_size; // total bytes across all files
 
     double hashing_time; // total hashing time in seconds
     double hashing_throughput; // in MB/s
@@ -83,7 +83,7 @@ static inline void fsp_dry_run_add_file(fsp_dry_run_stats *s, uint64_t size)
 {
     if (!s) return;
     s->file_count++;
-    s->total_size += size;
+    s->file_total_size += size;
 
     size_t bucket = size_to_bucket(size);
     if (bucket < FS_SIZE_BUCKETS)
@@ -100,9 +100,9 @@ static inline void fsp_dry_run_add_hashing(fsp_dry_run_stats *s, double seconds,
 }
 
 /* Add a protocol call to filelist */
-static inline void fsp_dry_run_add_protocol_filelist_call(fsp_dry_run_stats *s) {
+static inline void fsp_dry_run_add_protocol_call(fsp_dry_run_stats *s, uint64_t size) {
     if (!s) return;
-    s->protocol_filelist_calls++;
+    s->protocol_total_size += size;
 }
 
 /* Reset all stats */
@@ -118,14 +118,13 @@ fsp_dry_run_compute_simulation_metrics(fsp_dry_run_stats *s)
 {
     // Compute simulation data time: total_size / throughput
     if (s->simulation_cfg.throughput > 0.0) {
-        s->simulation_data_time = (double)s->total_size / s->simulation_cfg.throughput;
+        s->simulation_data_time = (double)s->file_total_size / s->simulation_cfg.throughput;
+        s->simulation_protocol_time = (double) s->protocol_total_size / s->simulation_cfg.throughput;
     } else {
         s->simulation_data_time = 0.0;
+        s->simulation_protocol_time = 0.0;
     }
-
-    // Compute simulation protocol time: number of filelist calls × RTT
-    s->simulation_protocol_time = s->protocol_filelist_calls * s->simulation_cfg.latencyRtt / 1000.0;
-    // RTT is in ms, convert to seconds
+        
 }
 
 
@@ -155,7 +154,7 @@ fsp_dry_run_report(const fsp_dry_run_stats *s)
 
   
     /* Filesystem shape */
-    print_size(s->total_size, buf, sizeof(buf));
+    print_size(s->file_total_size, buf, sizeof(buf));
     fprintf(stderr, "Filesystem:\n");
     fprintf(stderr, "  Directories : %" PRIu64 "\n", s->dir_count);
     fprintf(stderr, "  Files       : %" PRIu64 "\n", s->file_count);
@@ -235,6 +234,9 @@ fsp_dry_run_report(const fsp_dry_run_stats *s)
     /* ------------------ */
     fprintf(stderr, "Simulation / Observed Metrics:\n");
 
+    fprintf(stderr, "    Data size            : %" PRIu64 "\n", s->file_total_size); 
+    fprintf(stderr, "    Protocol data size   : %" PRIu64 "\n", s->protocol_total_size);
+
     /* Simulation */
     fprintf(stderr, "  Simulation:\n");
     fprintf(stderr, "    Throughput           : %8.2f MB/s\n", s->simulation_cfg.throughput / (1024.0 * 1024.0));
@@ -250,7 +252,6 @@ fsp_dry_run_report(const fsp_dry_run_stats *s)
     fprintf(stderr, "    Protocol time        : %.3f s\n", s->observed_protocol_time);
     fprintf(stderr, "\n");
 
-    fprintf(stderr, "    Protocol filelist calls: %" PRIu64 "\n", s->protocol_filelist_calls);
 
     fprintf(stderr, "\n");
 }
