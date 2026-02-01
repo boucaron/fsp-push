@@ -21,13 +21,12 @@
 int fsp_walk(const char *root_path,
              const char *rel_root,
              fsp_walk_callbacks_t *cbs,
-             void *user_data,
-             fsp_walker_mode_t mode)
+             fsp_walker_state_t *state,
+             fsp_walker_mode_t mode )             
 {
-    if (!root_path || !cbs || !user_data)
+    if (!root_path || !cbs || !state)
         return -1;
-
-    fsp_walker_state_t *state = (fsp_walker_state_t *)user_data;
+   
     state->current_depth  = 0;
     state->current_files  = 0;
     state->current_bytes  = 0;
@@ -39,8 +38,9 @@ int fsp_walk(const char *root_path,
     }
 
     // First, always perform DRY_RUN
+    state->mode = FSP_WALK_MODE_DRY_RUN;
     double t0 = fsp_now_sec();
-    int ret = fsp_walk_dir_recursive(root_path, rel_root, cbs, state, FSP_WALK_MODE_DRY_RUN);
+    int ret = fsp_walk_dir_recursive(root_path, rel_root, cbs, state);
     if (ret < 0) return ret;
     double t1 = fsp_now_sec();
     state->dry_run->filesystem_traversal_time = t1 - t0;
@@ -49,6 +49,7 @@ int fsp_walk(const char *root_path,
 
     // Now perform real run if requested
     if (mode == FSP_WALK_MODE_RUN) {
+        state->mode = mode;
         // TODO: Implement RUN mode (SHA256, batching, send FILE_LIST)
         // Placeholder: we could call fsp_walk_dir_recursive again with RUN mode
         // ret = fsp_walk_dir_recursive(root_path, rel_root, cbs, state, FSP_WALK_MODE_RUN);
@@ -65,8 +66,7 @@ int fsp_walk(const char *root_path,
 int fsp_walk_dir_recursive(const char *root_path,
                            const char *rel_path,
                            fsp_walk_callbacks_t *cbs,
-                           fsp_walker_state_t *state,
-                           fsp_walker_mode_t mode)
+                           fsp_walker_state_t *state)                           
 {
     DIR *dir = opendir(root_path);
     if (!dir) {
@@ -125,18 +125,18 @@ int fsp_walk_dir_recursive(const char *root_path,
                     .st = &st,
                     .depth    = state->current_depth,
                 };
-                int ret = cbs->dir_cb(&d, state->user_data);
+                int ret = cbs->dir_cb(&d, state);
                 if ( ret != 0 ) return ret;                                    
             }
 
             // Update dry-run stats
-            if (mode == FSP_WALK_MODE_DRY_RUN) {
+            if (state->mode == FSP_WALK_MODE_DRY_RUN) {
                 fsp_dry_run_add_dir(state->dry_run);
             }
 
             // Recurse into subdirectory
             state->current_depth++;
-            fsp_walk_dir_recursive(full_path, rel_entry, cbs, state, mode);
+            fsp_walk_dir_recursive(full_path, rel_entry, cbs, state);
             state->current_depth--;
         }
         else if (S_ISREG(st.st_mode)) {
@@ -147,19 +147,20 @@ int fsp_walk_dir_recursive(const char *root_path,
                 .depth     = state->current_depth
             };
 
-            if (mode == FSP_WALK_MODE_DRY_RUN) {
+            if (state->mode == FSP_WALK_MODE_DRY_RUN) {
                 fsp_dry_run_add_file(state->dry_run, st.st_size);
             } 
-            else if (mode == FSP_WALK_MODE_RUN) {
+            else if (state->mode == FSP_WALK_MODE_RUN) {
                 // TODO: Allocate fsp_file_entry_t
                 // TODO: Compute SHA256 of file & the chunks as required
                 // TODO: Update state->entries
                 // TODO: Flush batch if thresholds reached ==> do it in the file callback
+                // ===> All done in the callback
             }
 
             // Call user file callback
             if (cbs->file_cb) {
-                int ret = cbs->file_cb(&f, state->user_data);
+                int ret = cbs->file_cb(&f, state);
                 if ( ret != 0 ) return ret;
             }
         }
@@ -169,7 +170,7 @@ int fsp_walk_dir_recursive(const char *root_path,
 
     // Flush batch if needed
     if (cbs->flush_cb) {
-        int ret = cbs->flush_cb(state->user_data);
+        int ret = cbs->flush_cb(state);
         if ( ret != 0 ) return ret;
     }
 

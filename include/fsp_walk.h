@@ -53,28 +53,6 @@ typedef struct fsp_walk_dir {
     uint32_t    depth;        // Depth from root
 } fsp_walk_dir_t;
 
-/** Callback interface for DFS walker */
-typedef struct fsp_walk_callbacks {
-    /** Called for each file found */
-    int (*file_cb)(fsp_walk_file_t *file, void *user_data);
-
-    /** Called for each directory found */
-    int (*dir_cb)(fsp_walk_dir_t *dir, void *user_data);
-
-    /**
-     * Optional flush callback for batching.
-     * Called whenever a batch reaches thresholds or at the end of directory traversal.
-     */
-    int (*flush_cb)(void *user_data);
-
-    // Optional batching thresholds
-    size_t   max_files;    // e.g., FSP_MAX_FILES_PER_LIST
-    uint64_t max_bytes;    // e.g., FSP_MAX_FILE_LIST_BYTES
-
-    // Optional max depth: walker stops at this depth
-    uint32_t max_depth;    // 0 = no limit
-} fsp_walk_callbacks_t;
-
 
 
 /* =========================================================================
@@ -126,6 +104,31 @@ typedef struct fsp_walker_state {
 
 
 
+
+/** Callback interface for DFS walker */
+typedef struct fsp_walk_callbacks {
+    /** Called for each file found */
+    int (*file_cb)(fsp_walk_file_t *file, fsp_walker_state_t *state);
+
+    /** Called for each directory found */
+    int (*dir_cb)(fsp_walk_dir_t *dir, fsp_walker_state_t *state);
+
+    /**
+     * Optional flush callback for batching.
+     * Called whenever a batch reaches thresholds or at the end of directory traversal.
+     */
+    int (*flush_cb)(fsp_walker_state_t *state);
+
+    // Optional batching thresholds
+    size_t   max_files;    // e.g., FSP_MAX_FILES_PER_LIST
+    uint64_t max_bytes;    // e.g., FSP_MAX_FILE_LIST_BYTES
+
+    // Optional max depth: walker stops at this depth
+    uint32_t max_depth;    // 0 = no limit
+} fsp_walk_callbacks_t;
+
+
+
 /* =========================================================================
  * DFS Walker Interface
  * ========================================================================= */
@@ -133,8 +136,9 @@ typedef struct fsp_walker_state {
  int fsp_walk(const char *root_path,
              const char *rel_root,
              fsp_walk_callbacks_t *cbs,
-             void *user_data,
-             fsp_walker_mode_t mode);
+             fsp_walker_state_t *state,
+             fsp_walker_mode_t mode
+            );
 
 /**
  * Walk a directory recursively in DFS order.
@@ -143,7 +147,6 @@ typedef struct fsp_walker_state {
  *   root_path : absolute path to start the walk
  *   rel_root  : base relative path (empty string for root)
  *   cbs       : pointer to callbacks structure
- *   user_data : opaque pointer passed to callbacks
  *
  * Returns:
  *   0 on success, <0 on error
@@ -156,5 +159,4 @@ typedef struct fsp_walker_state {
 int fsp_walk_dir_recursive(const char *root_path,
                                   const char *rel_path,
                                   fsp_walk_callbacks_t *cbs,
-                                  fsp_walker_state_t *state,
-                                  fsp_walker_mode_t mode);
+                                  fsp_walker_state_t *state);                                  

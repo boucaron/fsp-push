@@ -14,9 +14,7 @@
 // Callback implementations
 // ---------------------------
 
-int file_callback(fsp_walk_file_t *file, void *user_data) {
-    fsp_walker_state_t *state = (fsp_walker_state_t *)user_data;
-
+int file_callback(fsp_walk_file_t *file, fsp_walker_state_t *state) {
     printf("File: %s (size: %" PRIu64 " bytes, depth: %u)\n",
            file->rel_path, file->st->st_size, file->depth);
 
@@ -31,14 +29,13 @@ int file_callback(fsp_walk_file_t *file, void *user_data) {
     return 0;
 }
 
-int dir_callback(fsp_walk_dir_t *dir, void *user_data) {
-    (void)user_data; // unused
+int dir_callback(fsp_walk_dir_t *dir, fsp_walker_state_t *state) {
+    (void)state; // unused
     printf("Dir : %s (depth: %u)\n", dir->dir_path, dir->depth);
     return 0;
 }
 
-int flush_callback(void *user_data) {
-    fsp_walker_state_t *state = (fsp_walker_state_t *)user_data;
+int flush_callback(fsp_walker_state_t *state) {  
     if (state->flush_needed) {
         printf("Flush triggered: %zu files, %" PRIu64 " bytes\n",
                state->current_files, state->current_bytes);
