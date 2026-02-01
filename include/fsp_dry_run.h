@@ -125,6 +125,17 @@ static inline double fsp_now_sec(void)
     return (double)clock() / (double)CLOCKS_PER_SEC;
 #endif
 }
+static inline double fsp_now_msec(void)
+{
+#if defined(CLOCK_MONOTONIC)
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec * 1e3 +
+           (double)ts.tv_nsec * 1e-6;
+#else
+    return (double)clock() * 1e3 / CLOCKS_PER_SEC;
+#endif
+}
 
 
 static inline void
@@ -292,7 +303,9 @@ fsp_dry_run_report(const fsp_dry_run_stats *s)
     fsp_print_time( s->observed_protocol_time, buf, sizeof(buf));      
     fprintf(stderr, "    Protocol time                : %s\n", buf);
     fsp_print_time( s->filesystem_traversal_time, buf, sizeof(buf));      
-    fprintf(stderr, "    Filesystem Traversal Time    : %s\n", buf);
+    fprintf(stderr, "    Filesystem Traversal Time    : %s\n", buf);    
+    fsp_print_time( s->hashing_time / 1000.0, buf, sizeof(buf));      
+    fprintf(stderr, "    Hashing Time                 : %s\n", buf);
     fprintf(stderr, "\n");
 
 
