@@ -51,15 +51,28 @@ fsp_compute_file_and_chunks(const char *path, fsp_file_entry_t *entry)
         return -1;
     }
 
-    EVP_MD_CTX *file_ctx  = EVP_MD_CTX_new();
-    EVP_MD_CTX *chunk_ctx = EVP_MD_CTX_new();
-    if (!file_ctx || !chunk_ctx) {
+    const int use_chunks = (entry->size >= FSP_CHUNK_SIZE);
+
+    EVP_MD_CTX *file_ctx = EVP_MD_CTX_new();
+    EVP_MD_CTX *chunk_ctx = NULL;
+
+    if (!file_ctx) {
         fclose(fp);
         return -1;
     }
 
-    EVP_DigestInit_ex(file_ctx,  EVP_sha256(), NULL);
-    EVP_DigestInit_ex(chunk_ctx, EVP_sha256(), NULL);
+    if (use_chunks) {
+        chunk_ctx = EVP_MD_CTX_new();
+        if (!chunk_ctx) {
+            fclose(fp);
+            EVP_MD_CTX_free(file_ctx);
+            return -1;
+        }
+    }
+
+    EVP_DigestInit_ex(file_ctx, EVP_sha256(), NULL);
+    if (use_chunks)
+        EVP_DigestInit_ex(chunk_ctx, EVP_sha256(), NULL);
 
     uint8_t buf[1024 * 1024]; /* 1 MB buffer */
     size_t  n;
@@ -71,41 +84,46 @@ fsp_compute_file_and_chunks(const char *path, fsp_file_entry_t *entry)
 
     while ((n = fread(buf, 1, sizeof(buf), fp)) > 0) {
         EVP_DigestUpdate(file_ctx, buf, n);
-        EVP_DigestUpdate(chunk_ctx, buf, n);
-        chunk_bytes += n;
 
-        if (chunk_bytes >= FSP_CHUNK_SIZE) {
-            if (entry->num_chunks >= cap_chunks) {
-                size_t new_cap = cap_chunks ? cap_chunks * 2 : 16;
-                void *tmp = realloc(
-                    chunks,
-                    new_cap * sizeof(*chunks)
-                );
-                if (!tmp) {
-                    fclose(fp);
-                    EVP_MD_CTX_free(file_ctx);
-                    EVP_MD_CTX_free(chunk_ctx);
-                    free(chunks);
-                    return -1;
+        if (use_chunks) {
+            EVP_DigestUpdate(chunk_ctx, buf, n);
+            chunk_bytes += n;
+
+            if (chunk_bytes >= FSP_CHUNK_SIZE) {
+                if (entry->num_chunks >= cap_chunks) {
+                    size_t new_cap = cap_chunks ? cap_chunks * 2 : 16;
+                    void *tmp = realloc(
+                        chunks,
+                        new_cap * sizeof(*chunks)
+                    );
+                    if (!tmp) {
+                        fclose(fp);
+                        EVP_MD_CTX_free(file_ctx);
+                        EVP_MD_CTX_free(chunk_ctx);
+                        free(chunks);
+                        return -1;
+                    }
+                    chunks = tmp;
+                    cap_chunks = new_cap;
                 }
-                chunks = tmp;
-                cap_chunks = new_cap;
+
+                EVP_DigestFinal_ex(
+                    chunk_ctx,
+                    chunks[entry->num_chunks],
+                    NULL
+                );
+                entry->num_chunks++;
+                chunk_bytes = 0;
+
+                EVP_DigestInit_ex(chunk_ctx, EVP_sha256(), NULL);
             }
-
-            EVP_DigestFinal_ex(
-                chunk_ctx,
-                chunks[entry->num_chunks],
-                NULL
-            );
-            entry->num_chunks++;
-            chunk_bytes = 0;
-
-            EVP_DigestInit_ex(chunk_ctx, EVP_sha256(), NULL);
         }
     }
 
-    /* Final partial chunk */
-    if (chunk_bytes > 0) {
+    /*
+     * Final partial chunk ONLY if chunks are enabled
+     */
+    if (use_chunks && chunk_bytes > 0) {
         if (entry->num_chunks >= cap_chunks) {
             size_t new_cap = cap_chunks ? cap_chunks * 2 : 16;
             void *tmp = realloc(
@@ -133,15 +151,23 @@ fsp_compute_file_and_chunks(const char *path, fsp_file_entry_t *entry)
 
     EVP_DigestFinal_ex(file_ctx, entry->file_hash, NULL);
 
-    entry->chunk_hashes = chunks;
-    entry->cap_chunks   = cap_chunks;
+    if (use_chunks) {
+        entry->chunk_hashes = chunks;
+        entry->cap_chunks   = cap_chunks;
+    } else {
+        entry->chunk_hashes = NULL;
+        entry->num_chunks   = 0;
+        entry->cap_chunks   = 0;
+    }
 
     fclose(fp);
     EVP_MD_CTX_free(file_ctx);
-    EVP_MD_CTX_free(chunk_ctx);
+    if (chunk_ctx)
+        EVP_MD_CTX_free(chunk_ctx);
 
     return 0;
 }
+
 
 /* =========================================================================
  * Public API
