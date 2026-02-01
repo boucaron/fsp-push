@@ -50,11 +50,11 @@ int fsp_walk(const char *root_path,
     // Now perform real run if requested
     if (mode == FSP_WALK_MODE_RUN) {
         state->mode = mode;
-        // TODO: Implement RUN mode (SHA256, batching, send FILE_LIST)
-        // Placeholder: we could call fsp_walk_dir_recursive again with RUN mode
-        // ret = fsp_walk_dir_recursive(root_path, rel_root, cbs, state, FSP_WALK_MODE_RUN);
-        // For now, just report dry-run stats again
-        fsp_dry_run_report(state->dry_run);
+        double t0 = fsp_now_sec();
+        int ret = fsp_walk_dir_recursive(root_path, rel_root, cbs, state);
+        if (ret < 0) return ret;
+        double t1 = fsp_now_sec();        
+        // fsp_dry_run_report(state->dry_run);
     }
 
     return 0;
