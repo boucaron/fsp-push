@@ -76,6 +76,10 @@ int main(int argc, char **argv)
     state.max_bytes = FSP_MAX_FILE_LIST_BYTES;
     state.max_depth = FSP_MAX_WALK_DEPTH;
 
+    state.file_buf_size = 16 * 1024 * 1024; // 16 MB
+    state.file_buf = malloc(state.file_buf_size);
+    if (!state.file_buf) { perror("malloc"); exit(1); }
+
     fsp_file_processor_init(&state);
 
     /* -------------------------------------------------------------
@@ -91,6 +95,9 @@ int main(int argc, char **argv)
     cbs.max_files = FSP_MAX_FILES_PER_LIST;
     cbs.max_bytes = FSP_MAX_FILE_LIST_BYTES;
     cbs.max_depth = FSP_MAX_WALK_DEPTH;
+
+    
+
 
     /* -------------------------------------------------------------
      * Walk
@@ -118,5 +125,7 @@ int main(int argc, char **argv)
     fsp_dry_run_report(state.dry_run);
 
     printf("\nDone.\n");
+
+    free(state.file_buf);
     return 0;
 }

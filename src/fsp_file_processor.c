@@ -41,10 +41,20 @@ fsp_append_file_entry(fsp_walker_state_t *state,
 /* =========================================================================
  * SHA256 file + chunk hashing (single pass, EVP)
  * ========================================================================= */
+/* =========================================================================
+ * SHA256 file + chunk hashing (single pass, EVP)
+ * ========================================================================= */
 
 static int
-fsp_compute_file_and_chunks(const char *path, fsp_file_entry_t *entry)
+fsp_compute_file_and_chunks(const char *path,
+                            fsp_file_entry_t *entry,
+                            fsp_walker_state_t *state)
 {
+    if (!state->file_buf || state->file_buf_size == 0) {
+        fprintf(stderr, "fsp_compute_file_and_chunks: invalid state buffer\n");
+        return -1;
+    }
+
     FILE *fp = fopen(path, "rb");
     if (!fp) {
         perror("fopen");
@@ -55,63 +65,70 @@ fsp_compute_file_and_chunks(const char *path, fsp_file_entry_t *entry)
     EVP_MD_CTX *chunk_ctx = EVP_MD_CTX_new();
     if (!file_ctx || !chunk_ctx) {
         fclose(fp);
+        EVP_MD_CTX_free(file_ctx);
+        EVP_MD_CTX_free(chunk_ctx);
         return -1;
     }
 
     EVP_DigestInit_ex(file_ctx,  EVP_sha256(), NULL);
     EVP_DigestInit_ex(chunk_ctx, EVP_sha256(), NULL);
 
-    uint8_t buf[1024 * 1024]; /* 1 MB buffer */
-    size_t  n;
+    uint8_t *buf = state->file_buf;
+    size_t buf_size = state->file_buf_size;
 
     uint64_t chunk_bytes = 0;
     size_t   cap_chunks  = 0;
 
     unsigned char (*chunks)[SHA256_DIGEST_LENGTH] = NULL;
 
-    while ((n = fread(buf, 1, sizeof(buf), fp)) > 0) {
+    while (!feof(fp)) {
+        size_t n = fread(buf, 1, buf_size, fp);
+        if (ferror(fp)) {
+            perror("fread");
+            fclose(fp);
+            EVP_MD_CTX_free(file_ctx);
+            EVP_MD_CTX_free(chunk_ctx);
+            free(chunks);
+            return -1;
+        }
+
+        if (n == 0) break;
+
         EVP_DigestUpdate(file_ctx, buf, n);
-        EVP_DigestUpdate(chunk_ctx, buf, n);
-        chunk_bytes += n;
 
-        if (chunk_bytes >= FSP_CHUNK_SIZE) {
-            if (entry->num_chunks >= cap_chunks) {
-                size_t new_cap = cap_chunks ? cap_chunks * 2 : 16;
-                void *tmp = realloc(
-                    chunks,
-                    new_cap * sizeof(*chunks)
-                );
-                if (!tmp) {
-                    fclose(fp);
-                    EVP_MD_CTX_free(file_ctx);
-                    EVP_MD_CTX_free(chunk_ctx);
-                    free(chunks);
-                    return -1;
+        // Only compute chunks if file >= FSP_CHUNK_SIZE
+        if (entry->size >= FSP_CHUNK_SIZE) {
+            EVP_DigestUpdate(chunk_ctx, buf, n);
+            chunk_bytes += n;
+
+            if (chunk_bytes >= FSP_CHUNK_SIZE) {
+                if (entry->num_chunks >= cap_chunks) {
+                    size_t new_cap = cap_chunks ? cap_chunks * 2 : 16;
+                    void *tmp = realloc(chunks, new_cap * sizeof(*chunks));
+                    if (!tmp) {
+                        fclose(fp);
+                        EVP_MD_CTX_free(file_ctx);
+                        EVP_MD_CTX_free(chunk_ctx);
+                        free(chunks);
+                        return -1;
+                    }
+                    chunks = tmp;
+                    cap_chunks = new_cap;
                 }
-                chunks = tmp;
-                cap_chunks = new_cap;
+
+                EVP_DigestFinal_ex(chunk_ctx, chunks[entry->num_chunks], NULL);
+                entry->num_chunks++;
+                chunk_bytes = 0;
+                EVP_DigestInit_ex(chunk_ctx, EVP_sha256(), NULL);
             }
-
-            EVP_DigestFinal_ex(
-                chunk_ctx,
-                chunks[entry->num_chunks],
-                NULL
-            );
-            entry->num_chunks++;
-            chunk_bytes = 0;
-
-            EVP_DigestInit_ex(chunk_ctx, EVP_sha256(), NULL);
         }
     }
 
-    /* Final partial chunk */
-    if (chunk_bytes > 0) {
+    // Final partial chunk
+    if (chunk_bytes > 0 && entry->size >= FSP_CHUNK_SIZE) {
         if (entry->num_chunks >= cap_chunks) {
             size_t new_cap = cap_chunks ? cap_chunks * 2 : 16;
-            void *tmp = realloc(
-                chunks,
-                new_cap * sizeof(*chunks)
-            );
+            void *tmp = realloc(chunks, new_cap * sizeof(*chunks));
             if (!tmp) {
                 fclose(fp);
                 EVP_MD_CTX_free(file_ctx);
@@ -123,11 +140,7 @@ fsp_compute_file_and_chunks(const char *path, fsp_file_entry_t *entry)
             cap_chunks = new_cap;
         }
 
-        EVP_DigestFinal_ex(
-            chunk_ctx,
-            chunks[entry->num_chunks],
-            NULL
-        );
+        EVP_DigestFinal_ex(chunk_ctx, chunks[entry->num_chunks], NULL);
         entry->num_chunks++;
     }
 
@@ -142,6 +155,7 @@ fsp_compute_file_and_chunks(const char *path, fsp_file_entry_t *entry)
 
     return 0;
 }
+
 
 /* =========================================================================
  * Public API
@@ -169,7 +183,7 @@ fsp_file_processor_process_file(const char *full_path,
 
 
     double t0 = fsp_now_msec();
-    if (fsp_compute_file_and_chunks(full_path, entry) < 0) {
+    if (fsp_compute_file_and_chunks(full_path, entry, state) < 0) {
         fprintf(stderr, "hash failed: %s\n", full_path);
         return -1;
     }
