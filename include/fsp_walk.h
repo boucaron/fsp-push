@@ -42,29 +42,30 @@ typedef struct {
 typedef struct fsp_walk_file {
     const char *full_path;    // Absolute path to file
     const char *rel_path;     // Path relative to root of walk
-    uint64_t    size;         // File size in bytes
+    const struct stat *st;  // Stat data
     uint32_t    depth;        // Depth from root
 } fsp_walk_file_t;
 
 /** Directory information passed to user callback */
 typedef struct fsp_walk_dir {
     const char *dir_path;     // Path of directory
+    const struct stat *st;  // Stat data : for future use
     uint32_t    depth;        // Depth from root
 } fsp_walk_dir_t;
 
 /** Callback interface for DFS walker */
 typedef struct fsp_walk_callbacks {
     /** Called for each file found */
-    void (*file_cb)(fsp_walk_file_t *file, void *user_data);
+    int (*file_cb)(fsp_walk_file_t *file, void *user_data);
 
     /** Called for each directory found */
-    void (*dir_cb)(fsp_walk_dir_t *dir, void *user_data);
+    int (*dir_cb)(fsp_walk_dir_t *dir, void *user_data);
 
     /**
      * Optional flush callback for batching.
      * Called whenever a batch reaches thresholds or at the end of directory traversal.
      */
-    void (*flush_cb)(void *user_data);
+    int (*flush_cb)(void *user_data);
 
     // Optional batching thresholds
     size_t   max_files;    // e.g., FSP_MAX_FILES_PER_LIST

@@ -122,9 +122,11 @@ int fsp_walk_dir_recursive(const char *root_path,
             if (cbs->dir_cb) {
                 fsp_walk_dir_t d = {
                     .dir_path = full_path,
+                    .st = &st,
                     .depth    = state->current_depth,
                 };
-                cbs->dir_cb(&d, state->user_data);
+                int ret = cbs->dir_cb(&d, state->user_data);
+                if ( ret != 0 ) return ret;                                    
             }
 
             // Update dry-run stats
@@ -141,7 +143,7 @@ int fsp_walk_dir_recursive(const char *root_path,
             fsp_walk_file_t f = {
                 .full_path = full_path,
                 .rel_path  = rel_entry,
-                .size      = st.st_size,
+                .st      = &st,
                 .depth     = state->current_depth
             };
 
@@ -150,22 +152,26 @@ int fsp_walk_dir_recursive(const char *root_path,
             } 
             else if (mode == FSP_WALK_MODE_RUN) {
                 // TODO: Allocate fsp_file_entry_t
-                // TODO: Compute SHA256 of file
+                // TODO: Compute SHA256 of file & the chunks as required
                 // TODO: Update state->entries
-                // TODO: Flush batch if thresholds reached
+                // TODO: Flush batch if thresholds reached ==> do it in the file callback
             }
 
             // Call user file callback
-            if (cbs->file_cb)
-                cbs->file_cb(&f, state->user_data);
+            if (cbs->file_cb) {
+                int ret = cbs->file_cb(&f, state->user_data);
+                if ( ret != 0 ) return ret;
+            }
         }
     }
 
     closedir(dir);
 
     // Flush batch if needed
-    if (cbs->flush_cb)
-        cbs->flush_cb(state->user_data);
+    if (cbs->flush_cb) {
+        int ret = cbs->flush_cb(state->user_data);
+        if ( ret != 0 ) return ret;
+    }
 
     return 0;
 }

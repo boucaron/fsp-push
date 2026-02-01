@@ -8,41 +8,45 @@
 #include <string.h>
 #include <stdbool.h>
 #include <inttypes.h>
+#include <sys/stat.h>
 
 // ---------------------------
 // Callback implementations
 // ---------------------------
 
-void file_callback(fsp_walk_file_t *file, void *user_data) {
+int file_callback(fsp_walk_file_t *file, void *user_data) {
     fsp_walker_state_t *state = (fsp_walker_state_t *)user_data;
 
     printf("File: %s (size: %" PRIu64 " bytes, depth: %u)\n",
-           file->rel_path, file->size, file->depth);
+           file->rel_path, file->st->st_size, file->depth);
 
     // Simulate batching according to protocol limits
     state->current_files++;
-    state->current_bytes += file->size;
+    state->current_bytes += file->st->st_size;
 
     if (state->current_files >= FSP_MAX_FILES_PER_LIST ||
         state->current_bytes >= FSP_MAX_FILE_LIST_BYTES) {
         state->flush_needed = true;
     }
+    return 0;
 }
 
-void dir_callback(fsp_walk_dir_t *dir, void *user_data) {
+int dir_callback(fsp_walk_dir_t *dir, void *user_data) {
     (void)user_data; // unused
     printf("Dir : %s (depth: %u)\n", dir->dir_path, dir->depth);
+    return 0;
 }
 
-void flush_callback(void *user_data) {
+int flush_callback(void *user_data) {
     fsp_walker_state_t *state = (fsp_walker_state_t *)user_data;
     if (state->flush_needed) {
         printf("Flush triggered: %zu files, %" PRIu64 " bytes\n",
                state->current_files, state->current_bytes);
         state->current_files = 0;
         state->current_bytes = 0;
-        state->flush_needed = false;
+        state->flush_needed = false;        
     }
+    return 0;
 }
 
 // ---------------------------
