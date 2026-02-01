@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <inttypes.h>
 #include <string.h>
+#include <time.h>
 
 /* Simulation Input */
 typedef struct {
@@ -32,6 +33,8 @@ typedef struct {
     uint64_t file_count; // Number of files
 
     uint64_t file_total_size; // total bytes across all files
+
+    double filesystem_traversal_time; // total time traversing directories and reading list of files in seconds
 
     double hashing_time; // total hashing time in seconds
     double hashing_throughput; // in MB/s
@@ -110,6 +113,17 @@ static inline void fsp_dry_run_reset(fsp_dry_run_stats *s)
 {
     if (!s) return;
     memset(s, 0, sizeof(*s));
+}
+
+static inline double fsp_now_sec(void)
+{
+#if defined(CLOCK_MONOTONIC)
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
+#else
+    return (double)clock() / (double)CLOCKS_PER_SEC;
+#endif
 }
 
 
@@ -257,26 +271,28 @@ fsp_dry_run_report(const fsp_dry_run_stats *s)
     /* ------------------ */
     fprintf(stderr, "Simulation / Observed Metrics:\n");
     fsp_print_size(s->file_total_size, buf, sizeof(buf));
-    fprintf(stderr, "    Data size            : %s\n", buf); 
+    fprintf(stderr, "    Data size                    : %s\n", buf); 
     fsp_print_size(s->protocol_total_size, buf, sizeof(buf));
-    fprintf(stderr, "    Protocol data size   : %s\n", buf); 
+    fprintf(stderr, "    Protocol data size           : %s\n", buf); 
     /* Simulation */
     fprintf(stderr, "  Simulation:\n");
-    fprintf(stderr, "    Throughput           : %8.2f MB/s\n", s->simulation_cfg.throughput / (1024.0 * 1024.0));
-    fprintf(stderr, "    RTT                  : %7.3f ms\n", s->simulation_cfg.latencyRtt);
+    fprintf(stderr, "    Throughput                   : %8.2f MB/s\n", s->simulation_cfg.throughput / (1024.0 * 1024.0));
+    fprintf(stderr, "    RTT                          : %7.3f ms\n", s->simulation_cfg.latencyRtt);
     fsp_print_time( s->simulation_data_time, buf, sizeof(buf));      
-    fprintf(stderr, "    Data time            : %s\n", buf);
+    fprintf(stderr, "    Data time                    : %s\n", buf);
     fsp_print_time( s->simulation_protocol_time, buf, sizeof(buf));      
-    fprintf(stderr, "    Protocol time        : %s\n", buf);
+    fprintf(stderr, "    Protocol time                : %s\n", buf);
 
     /* Observed */
     fprintf(stderr, "  Observed:\n");
-    fprintf(stderr, "    Throughput           : %8.2f MB/s\n", s->observed_perf.throughput / (1024.0 * 1024.0));
-    fprintf(stderr, "    RTT                  : %7.3f ms\n", s->observed_perf.latencyRtt);
+    fprintf(stderr, "    Throughput                   : %8.2f MB/s\n", s->observed_perf.throughput / (1024.0 * 1024.0));
+    fprintf(stderr, "    RTT                          : %7.3f ms\n", s->observed_perf.latencyRtt);
     fsp_print_time( s->observed_data_time, buf, sizeof(buf));      
-    fprintf(stderr, "    Data time            : %s\n", buf);
+    fprintf(stderr, "    Data time                    : %s\n", buf);
     fsp_print_time( s->observed_protocol_time, buf, sizeof(buf));      
-    fprintf(stderr, "    Protocol time        : %s\n", buf);
+    fprintf(stderr, "    Protocol time                : %s\n", buf);
+    fsp_print_time( s->filesystem_traversal_time, buf, sizeof(buf));      
+    fprintf(stderr, "    Filesystem Traversal Time    : %s\n", buf);
     fprintf(stderr, "\n");
 
 

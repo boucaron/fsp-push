@@ -39,9 +39,12 @@ int fsp_walk(const char *root_path,
     }
 
     // First, always perform DRY_RUN
+    double t0 = fsp_now_sec();
     int ret = fsp_walk_dir_recursive(root_path, rel_root, cbs, state, FSP_WALK_MODE_DRY_RUN);
     if (ret < 0) return ret;
-
+    double t1 = fsp_now_sec();
+    state->dry_run->filesystem_traversal_time = t1 - t0;
+    fsp_dry_run_compute_simulation_metrics(state->dry_run);
     fsp_dry_run_report(state->dry_run);
 
     // Now perform real run if requested
