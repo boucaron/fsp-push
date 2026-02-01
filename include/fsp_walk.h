@@ -100,6 +100,11 @@ typedef struct fsp_walker_state {
 
     // Optional: user pointer for callbacks
     void    *user_data;              // Could be sender context, etc.
+
+
+    uint8_t *file_buf;    // Shared buffer for file reading & hashing
+    size_t   file_buf_size;
+
 } fsp_walker_state_t;
 
 
