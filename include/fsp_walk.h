@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include <limits.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <stdbool.h>
 #include <openssl/sha.h>  // OpenSSL for SHA256
@@ -32,6 +33,7 @@ typedef struct {
 typedef struct {
     char name[NAME_MAX + 1];       // Directory name
     uint32_t depth;                // Depth from the root
+    struct stat st;           // Stat info
 } fsp_dir_entry_t;
 
 /* =========================================================================

@@ -69,6 +69,12 @@ int fsp_walk_dir_recursive(const char *root_path,
                            fsp_walk_callbacks_t *cbs,
                            fsp_walker_state_t *state)                           
 {
+
+    fsp_dir_entry_t *dir_array = NULL;
+    size_t dir_count = 0;
+    size_t dir_capacity = 0;
+
+
     DIR *dir = opendir(root_path);
     if (!dir) {
         perror("opendir");
@@ -139,85 +145,37 @@ int fsp_walk_dir_recursive(const char *root_path,
                 if ( ret != 0 ) return ret;
             }
         }
-    }
-
-    // Flush batch if needed
-    if (cbs->flush_cb) {
-        int ret = cbs->flush_cb(state);
-        if ( ret != 0 ) return ret;
-    }
-
-
-    // 2ND LOOP
-    rewinddir(dir);    
-    while ((entry = readdir(dir)) != NULL) {
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
-            continue;
-
-        char full_path[PATH_MAX];
-        char rel_entry[PATH_MAX];
-
-        snprintf(full_path, sizeof(full_path), "%s/%s", root_path, entry->d_name);
-        if (rel_path && rel_path[0] != '\0')
-            snprintf(rel_entry, sizeof(rel_entry), "%s/%s", rel_path, entry->d_name);
-        else
-            snprintf(rel_entry, sizeof(rel_entry), "%s", entry->d_name);
-
-        struct stat st;
-
-        /* On POSIX: use lstat to detect symlinks */
-#ifdef _WIN32
-        if (GetFileAttributesA(full_path) != INVALID_FILE_ATTRIBUTES) {
-            DWORD attrs = GetFileAttributesA(full_path);
-            if (attrs & FILE_ATTRIBUTE_REPARSE_POINT) {
-                // Skip junction / symlink
-                continue;
-            }
-        }
-        if (stat(full_path, &st) < 0) {
-            perror("stat");
-            continue;
-        }
-#else
-        if (lstat(full_path, &st) < 0) {
-            perror("lstat");
-            continue;
-        }
-        if (S_ISLNK(st.st_mode)) {
-            // Skip symlinks to avoid loops
-            continue;
-        }
-#endif
-
-        if (S_ISDIR(st.st_mode)) {
+        else if (S_ISDIR(st.st_mode)) {
             if (state->max_depth && state->current_depth >= state->max_depth)
                 continue;
 
-            // Call user directory callback
-            if (cbs->dir_cb) {
-                fsp_walk_dir_t d = {
-                    .dir_path = full_path,
-                    .st = &st,
-                    .depth    = state->current_depth,
-                };
-                int ret = cbs->dir_cb(&d, state);
-                if ( ret != 0 ) return ret;                                    
+             // --- Store in array ---
+            if (dir_count == dir_capacity) {
+                size_t new_capacity = dir_capacity ? dir_capacity * 2 : 16;
+                fsp_dir_entry_t *tmp = realloc(dir_array, new_capacity * sizeof(fsp_dir_entry_t));
+                if (!tmp) {
+                    perror("realloc");
+                    free(dir_array);
+                    return -1;
+                }
+                dir_array = tmp;
+                dir_capacity = new_capacity;
             }
 
+            strncpy(dir_array[dir_count].name, entry->d_name, NAME_MAX);
+            dir_array[dir_count].name[NAME_MAX] = '\0';
+            dir_array[dir_count].depth = state->current_depth;
+            dir_array[dir_count].st = st;
+            dir_count++;
+    
+            
             // Update dry-run stats
             if (state->mode == FSP_WALK_MODE_DRY_RUN) {
                 fsp_dry_run_add_dir(state->dry_run);
             }
-
-            // Recurse into subdirectory
-            state->current_depth++;
-            fsp_walk_dir_recursive(full_path, rel_entry, cbs, state);
-            state->current_depth--;
+           
         }        
     }
-
-
-    closedir(dir);
 
     // Flush batch if needed
     if (cbs->flush_cb) {
@@ -225,5 +183,44 @@ int fsp_walk_dir_recursive(const char *root_path,
         if ( ret != 0 ) return ret;
     }
 
+
+    // Loop on directories
+    for (size_t i = 0; i < dir_count; i++) {
+        char full_path[PATH_MAX];
+        snprintf(full_path, sizeof(full_path), "%s/%s", root_path, dir_array[i].name);
+
+        char rel_entry[PATH_MAX];
+        if (rel_path && rel_path[0] != '\0')
+            snprintf(rel_entry, sizeof(rel_entry), "%s/%s", rel_path, dir_array[i].name);
+        else
+            snprintf(rel_entry, sizeof(rel_entry), "%s", dir_array[i].name);
+
+
+        // Call user directory callback
+        if (cbs->dir_cb) {
+            fsp_walk_dir_t d = {
+                .dir_path = full_path,
+                .st       = &dir_array[i].st,
+                .depth    = state->current_depth,
+            };
+            int ret = cbs->dir_cb(&d, state);
+            if (ret != 0) {
+                free(dir_array);
+                return ret;
+            }
+        }
+
+        state->current_depth++;
+        int ret = fsp_walk_dir_recursive(full_path, rel_entry, cbs, state);
+        state->current_depth--;
+        if (ret != 0) {
+            free(dir_array);
+            return ret;
+        }
+    }
+
+    free(dir_array);  
+    closedir(dir);
+   
     return 0;
 }
