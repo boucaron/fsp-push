@@ -53,7 +53,8 @@ int fsp_walk(const char *root_path,
         double t0 = fsp_now_sec();
         int ret = fsp_walk_dir_recursive(root_path, rel_root, cbs, state);
         if (ret < 0) return ret;
-        double t1 = fsp_now_sec();        
+        double t1 = fsp_now_sec();
+        
         // fsp_dry_run_report(state->dry_run);
     }
 
@@ -75,6 +76,80 @@ int fsp_walk_dir_recursive(const char *root_path,
     }
 
     struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+            continue;
+
+        char full_path[PATH_MAX];
+        char rel_entry[PATH_MAX];
+
+        snprintf(full_path, sizeof(full_path), "%s/%s", root_path, entry->d_name);
+        if (rel_path && rel_path[0] != '\0')
+            snprintf(rel_entry, sizeof(rel_entry), "%s/%s", rel_path, entry->d_name);
+        else
+            snprintf(rel_entry, sizeof(rel_entry), "%s", entry->d_name);
+
+        struct stat st;
+
+        /* On POSIX: use lstat to detect symlinks */
+#ifdef _WIN32
+        if (GetFileAttributesA(full_path) != INVALID_FILE_ATTRIBUTES) {
+            DWORD attrs = GetFileAttributesA(full_path);
+            if (attrs & FILE_ATTRIBUTE_REPARSE_POINT) {
+                // Skip junction / symlink
+                continue;
+            }
+        }
+        if (stat(full_path, &st) < 0) {
+            perror("stat");
+            continue;
+        }
+#else
+        if (lstat(full_path, &st) < 0) {
+            perror("lstat");
+            continue;
+        }
+        if (S_ISLNK(st.st_mode)) {
+            // Skip symlinks to avoid loops
+            continue;
+        }
+#endif
+        if (S_ISREG(st.st_mode)) {
+            fsp_walk_file_t f = {
+                .full_path = full_path,
+                .rel_path  = rel_entry,
+                .st      = &st,
+                .depth     = state->current_depth
+            };
+
+            if (state->mode == FSP_WALK_MODE_DRY_RUN) {
+                fsp_dry_run_add_file(state->dry_run, st.st_size);
+            } 
+            else if (state->mode == FSP_WALK_MODE_RUN) {
+                // TODO: Allocate fsp_file_entry_t
+                // TODO: Compute SHA256 of file & the chunks as required
+                // TODO: Update state->entries
+                // TODO: Flush batch if thresholds reached ==> do it in the file callback
+                // ===> All done in the callback
+            }
+
+            // Call user file callback
+            if (cbs->file_cb) {
+                int ret = cbs->file_cb(&f, state);
+                if ( ret != 0 ) return ret;
+            }
+        }
+    }
+
+    // Flush batch if needed
+    if (cbs->flush_cb) {
+        int ret = cbs->flush_cb(state);
+        if ( ret != 0 ) return ret;
+    }
+
+
+    // 2ND LOOP
+    rewinddir(dir);    
     while ((entry = readdir(dir)) != NULL) {
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
             continue;
@@ -138,33 +213,9 @@ int fsp_walk_dir_recursive(const char *root_path,
             state->current_depth++;
             fsp_walk_dir_recursive(full_path, rel_entry, cbs, state);
             state->current_depth--;
-        }
-        else if (S_ISREG(st.st_mode)) {
-            fsp_walk_file_t f = {
-                .full_path = full_path,
-                .rel_path  = rel_entry,
-                .st      = &st,
-                .depth     = state->current_depth
-            };
-
-            if (state->mode == FSP_WALK_MODE_DRY_RUN) {
-                fsp_dry_run_add_file(state->dry_run, st.st_size);
-            } 
-            else if (state->mode == FSP_WALK_MODE_RUN) {
-                // TODO: Allocate fsp_file_entry_t
-                // TODO: Compute SHA256 of file & the chunks as required
-                // TODO: Update state->entries
-                // TODO: Flush batch if thresholds reached ==> do it in the file callback
-                // ===> All done in the callback
-            }
-
-            // Call user file callback
-            if (cbs->file_cb) {
-                int ret = cbs->file_cb(&f, state);
-                if ( ret != 0 ) return ret;
-            }
-        }
+        }        
     }
+
 
     closedir(dir);
 
