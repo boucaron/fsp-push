@@ -36,7 +36,7 @@ typedef struct {
 
     double filesystem_traversal_time; // total time traversing directories and reading list of files in seconds
 
-    double hashing_time; // total hashing time in seconds
+    double hashing_time; // total hashing time in milli seconds
     double hashing_throughput; // in MB/s
 
     // Exponential file size distribution (×4 growth, capped at 100 GB) @see size_to_bucket
@@ -93,13 +93,13 @@ static inline void fsp_dry_run_add_file(fsp_dry_run_stats *s, uint64_t size)
         s->size_buckets[bucket]++;
 }
 
-/* Add hashing time (seconds) and optionally recalc throughput in MB/s */
-static inline void fsp_dry_run_add_hashing(fsp_dry_run_stats *s, double seconds, uint64_t hashed_bytes)
+/* Add hashing time (milli seconds) and optionally recalc throughput in MB/s */
+static inline void fsp_dry_run_add_hashing(fsp_dry_run_stats *s, double millseconds, uint64_t hashed_bytes)
 {
     if (!s) return;
-    s->hashing_time += seconds;
-    if (seconds > 0)
-        s->hashing_throughput = (double)hashed_bytes / (1024.0 * 1024.0) / seconds;
+    s->hashing_time += millseconds;
+    if (millseconds > 0)
+        s->hashing_throughput = (double)hashed_bytes / (1024.0 * 1024.0) / (millseconds / 1000.0);
 }
 
 /* Add a protocol call to filelist */
@@ -193,7 +193,7 @@ fsp_print_time (double seconds, char *buf, size_t buflen)
 }
 
 static void
-fsp_dry_run_report(const fsp_dry_run_stats *s)
+fsp_dry_run_report(fsp_dry_run_stats *s)
 {
     char buf[64];
 
@@ -211,8 +211,11 @@ fsp_dry_run_report(const fsp_dry_run_stats *s)
 
     /* Hashing */
     fprintf(stderr, "Hashing:\n");
-    fsp_print_time(s->hashing_time, buf, sizeof(buf));      
+    s->hashing_throughput = 0.0;    
+    fsp_dry_run_add_hashing(s, 0.1, s->file_total_size);
+    fsp_print_time(s->hashing_time/1000.0, buf, sizeof(buf));      
     fprintf(stderr, "  Time       : %s\n", buf);
+
     fprintf(stderr, "  Throughput : %.2f MB/s\n", s->hashing_throughput);
 
     fprintf(stderr, "\n");

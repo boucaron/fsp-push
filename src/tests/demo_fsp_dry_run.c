@@ -59,7 +59,7 @@ int main(void)
     }
 
     // Add some hashing info (fake, proportional to total size)
-    fsp_dry_run_add_hashing(&stats, 10.0, stats.file_total_size);
+    fsp_dry_run_add_hashing(&stats, 10000.0, stats.file_total_size);
 
     for(size_t  i = 0 ; i <  stats.dir_count ; i++) {
        fsp_dry_run_add_protocol_call(&stats, 51200);
