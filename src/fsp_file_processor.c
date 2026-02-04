@@ -33,7 +33,7 @@ fsp_append_file_entry(fsp_walker_state_t *state,
 
     strncpy(f->name, name, sizeof(f->name) - 1);
     f->size  = size;
-    f->depth = depth;
+   
 
     return f;
 }
@@ -41,10 +41,6 @@ fsp_append_file_entry(fsp_walker_state_t *state,
 /* =========================================================================
  * SHA256 file + chunk hashing (single pass, EVP)
  * ========================================================================= */
-/* =========================================================================
- * SHA256 file + chunk hashing (single pass, EVP)
- * ========================================================================= */
-
 static int
 fsp_compute_file_and_chunks(const char *path,
                             fsp_file_entry_t *entry,
@@ -223,7 +219,7 @@ static void fsp_file_processor_flush_batch_debug(fsp_walker_state_t *state) {
         fprintf(stderr,"  Path   : %s\n", f->name);
         fprintf(stderr,"  Size   : %llu bytes\n",
                (unsigned long long)f->size);
-        fprintf(stderr,"  Depth  : %u\n", f->depth);
+        fprintf(stderr,"  Depth  : %u\n", state->current_depth);
 
         fprintf(stderr,"  SHA256 : ");
         fsp_print_sha256(f->file_hash);

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stdlib.h>
 #include <stdint.h>
 #include <limits.h>
 #include <sys/stat.h>
@@ -18,8 +19,7 @@
 typedef struct {
     char     name[NAME_MAX + 1];   // Entry name
     uint64_t size;                 // File size in bytes
-    uint32_t depth;                // Depth in the directory tree (root = 0)
-
+  
     // SHA256 hash of the entire file
     unsigned char file_hash[SHA256_DIGEST_LENGTH];
 
@@ -31,8 +31,7 @@ typedef struct {
 
 /** Represents a single directory in the DFS walker */
 typedef struct {
-    char name[NAME_MAX + 1];       // Directory name
-    uint32_t depth;                // Depth from the root
+    char name[NAME_MAX + 1];       // Directory name 
     struct stat st;           // Stat info
 } fsp_dir_entry_t;
 
@@ -63,11 +62,7 @@ typedef struct fsp_walk_dir {
 typedef struct {
     fsp_file_entry_t *files;
     size_t            num_files;
-    size_t            cap_files;
-
-    fsp_dir_entry_t  *dirs;
-    size_t            num_dirs;
-    size_t            cap_dirs;
+    size_t            cap_files;    
 } fsp_dir_entries_t;
 
 /* =========================================================================
@@ -79,7 +74,11 @@ typedef enum {
 } fsp_walker_mode_t;
 
 typedef struct fsp_walker_state {
-    fsp_dir_entries_t entries;       // Current directory entries (files + dirs)
+     
+    char fullpath[PATH_MAX]; // Current directory
+    char relpath[PATH_MAX]; // Relative path
+
+    fsp_dir_entries_t entries;       // Current file entries (directories are in the caller)
 
     // Current batch tracking
     size_t   current_files;          // Files accumulated in current batch
@@ -111,20 +110,11 @@ typedef struct fsp_walker_state {
 
 
 
-
 /** Callback interface for DFS walker */
 typedef struct fsp_walk_callbacks {
-    /** Called for each file found */
-    int (*file_cb)(fsp_walk_file_t *file, fsp_walker_state_t *state);
+    /** Run all the batches of the current directory in 3 phases */
+    int (*process_directory) (fsp_walker_state_t *state);
 
-    /** Called for each directory found */
-    int (*dir_cb)(fsp_walk_dir_t *dir, fsp_walker_state_t *state);
-
-    /**
-     * Optional flush callback for batching.
-     * Called whenever a batch reaches thresholds or at the end of directory traversal.
-     */
-    int (*flush_cb)(fsp_walker_state_t *state);
 
     // Optional batching thresholds
     size_t   max_files;    // e.g., FSP_MAX_FILES_PER_LIST
@@ -140,8 +130,7 @@ typedef struct fsp_walk_callbacks {
  * DFS Walker Interface
  * ========================================================================= */
 
- int fsp_walk(const char *root_path,
-             const char *rel_root,
+ int fsp_walk(const char *root_path,            
              fsp_walk_callbacks_t *cbs,
              fsp_walker_state_t *state,
              fsp_walker_mode_t mode
@@ -151,8 +140,7 @@ typedef struct fsp_walk_callbacks {
  * Walk a directory recursively in DFS order.
  *
  * Arguments:
- *   root_path : absolute path to start the walk
- *   rel_root  : base relative path (empty string for root)
+ *   root_path : absolute path to start the walk (updated after)
  *   cbs       : pointer to callbacks structure
  *
  * Returns:
@@ -163,7 +151,42 @@ typedef struct fsp_walk_callbacks {
  *   - Small files are batched according to max_files / max_bytes.
  *   - flush_cb may be called periodically or at the end of each directory.
  */
-int fsp_walk_dir_recursive(const char *root_path,
-                                  const char *rel_path,
-                                  fsp_walk_callbacks_t *cbs,
-                                  fsp_walker_state_t *state);                                  
+int fsp_walk_dir_recursive(const char *root_path,                                 
+                            fsp_walk_callbacks_t *cbs,
+                            fsp_walker_state_t *state);        
+                                  
+                                  
+/* MEMORY STUFF */
+/* =========================================================================
+ * Reset/clear entries for a new directory
+ * ========================================================================= */
+static inline void fsp_dir_entries_reset(fsp_dir_entries_t *entries)
+{
+    if (!entries) return;
+
+    // Free chunk hashes of each file
+    for (size_t i = 0; i < entries->num_files; i++) {
+         free(entries->files[i].chunk_hashes);
+        entries->files[i].chunk_hashes = NULL;
+        entries->files[i].num_chunks = 0;
+        entries->files[i].cap_chunks = 0;
+        memset(entries->files[i].file_hash, 0, SHA256_DIGEST_LENGTH);
+    }
+
+    // Reset count
+    entries->num_files = 0;
+    // cap_files remains the same for reuse
+}
+
+static inline void fsp_dir_entries_free(fsp_dir_entries_t *entries)
+{
+    if (!entries) return;
+
+    for (size_t i = 0; i < entries->num_files; i++)
+    free(entries->files[i].chunk_hashes);
+
+    free(entries->files);
+    entries->files = NULL;
+    entries->num_files = 0;
+    entries->cap_files = 0;
+}

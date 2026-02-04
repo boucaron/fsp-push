@@ -1,8 +1,6 @@
 #include "../../include/fsp.h"  // For protocol limits
 #include "../../include/fsp_walk.h"
 
-
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,45 +9,39 @@
 #include <sys/stat.h>
 
 // ---------------------------
-// Callback implementations
+// Callback implementation
 // ---------------------------
+int file_batching_callback(fsp_walker_state_t *state) {
+    if (!state || state->entries.num_files == 0) return 0;
 
-int file_callback(fsp_walk_file_t *file, fsp_walker_state_t *state) {
-    printf("File: %s (size: %" PRIu64 " bytes, depth: %u)\n",
-           file->rel_path, file->st->st_size, file->depth);
-
-    // Simulate batching according to protocol limits
-    state->current_files++;
-    state->current_bytes += file->st->st_size;
-
-    if (state->current_files >= FSP_MAX_FILES_PER_LIST ||
-        state->current_bytes >= FSP_MAX_FILE_LIST_BYTES) {
-        state->flush_needed = true;
+    printf("Directory: %s\n", state->relpath); //Could use fullpath 
+    printf("Depth: %d\n", state->current_depth);
+    for (size_t i = 0; i < state->entries.num_files; i++) {
+        fsp_file_entry_t *fe = &state->entries.files[i];
+        printf("  File: %s (size: %" PRIu64 " bytes)\n",
+               fe->name, fe->size);
     }
-    return 0;
-}
 
-int dir_callback(fsp_walk_dir_t *dir, fsp_walker_state_t *state) {
-    (void)state; // unused
-    printf("Dir : %s (depth: %u)\n", dir->dir_path, dir->depth);
-    return 0;
-}
+    // Simulate flush thresholds (optional)
+    state->current_files = state->entries.num_files;
+    state->current_bytes = 0;
+    for (size_t i = 0; i < state->entries.num_files; i++)
+        state->current_bytes += state->entries.files[i].size;
 
-int flush_callback(fsp_walker_state_t *state) {  
-    if (state->flush_needed) {
-        printf("Flush triggered: %zu files, %" PRIu64 " bytes\n",
+    if (state->current_files >= state->max_files ||
+        state->current_bytes >= state->max_bytes) {
+        printf("  Flush triggered: %zu files, %" PRIu64 " bytes\n",
                state->current_files, state->current_bytes);
         state->current_files = 0;
         state->current_bytes = 0;
-        state->flush_needed = false;        
     }
+
     return 0;
 }
 
 // ---------------------------
 // Demo main
 // ---------------------------
-
 int main(int argc, char **argv) {
     if (argc < 2) {
         fprintf(stderr, "Usage: %s <directory_to_walk>\n", argv[0]);
@@ -77,28 +69,24 @@ int main(int argc, char **argv) {
     // Setup callbacks
     fsp_walk_callbacks_t cbs;
     memset(&cbs, 0, sizeof(cbs));
-    cbs.file_cb  = file_callback;
-    cbs.dir_cb   = dir_callback;
-    cbs.flush_cb = flush_callback;
-    cbs.max_files = FSP_MAX_FILES_PER_LIST;
-    cbs.max_bytes = FSP_MAX_FILE_LIST_BYTES;
-    cbs.max_depth = FSP_MAX_WALK_DEPTH;
+    cbs.process_directory = file_batching_callback;
+    cbs.max_files     = FSP_MAX_FILES_PER_LIST;
+    cbs.max_bytes     = FSP_MAX_FILE_LIST_BYTES;
+    cbs.max_depth     = FSP_MAX_WALK_DEPTH;
 
     printf("Starting DRY_RUN on: %s\n", root_path);
 
-    int ret = fsp_walk(root_path, "", &cbs, &state, FSP_WALK_MODE_DRY_RUN);
+    int ret = fsp_walk(root_path, &cbs, &state, FSP_WALK_MODE_DRY_RUN);
     if (ret < 0) {
         fprintf(stderr, "fsp_walk failed!\n");
         return 1;
     }
 
-    // Trigger flush at the end if needed
-    if (state.flush_needed) {
-        flush_callback(&state);
-    }
-
-    printf("\nDry-run completed. Summary:\n");    
+    printf("\nDry-run completed. Summary:\n");
     fsp_dry_run_report(&dry_run_stats);
+
+    // Cleanup allocated memory
+    fsp_dir_entries_free(&state.entries);
 
     return 0;
 }
