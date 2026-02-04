@@ -72,9 +72,8 @@ int fsp_walk(const char *root_path,
     return 0;
 }
 
-/* ------------------------------------------------------------------------
- * Internal recursive DFS walker (handles junctions / symlinks to prevent loops)
- * ------------------------------------------------------------------------ */
+
+
 /* ------------------------------------------------------------------------
  * Internal recursive DFS walker (handles junctions / symlinks to prevent loops)
  * ------------------------------------------------------------------------ */
@@ -199,25 +198,42 @@ int fsp_walk_dir_recursive(const char *root_path,
     for (size_t i = 0; i < dir_count; i++) {
         // Absolute path for filesystem access
         char sub_path[PATH_MAX];
-        snprintf(sub_path, sizeof(sub_path), "%s/%s", state->fullpath, dir_array[i].name);
+        if (fsp_path_join(state->fullpath, dir_array[i].name, sub_path, sizeof(sub_path)) < 0) {
+            fprintf(stderr, "Error: absolute path truncated: %s/%s\n", state->fullpath, dir_array[i].name);
+            free(dir_array);
+            closedir(dir);
+            return -1;
+        }
 
         // Save current fullpath and relpath
-        char old_fullpath[PATH_MAX];
-        char old_relpath[PATH_MAX];
+        char old_fullpath[PATH_MAX], old_relpath[PATH_MAX];
         strncpy(old_fullpath, state->fullpath, sizeof(old_fullpath));
         old_fullpath[PATH_MAX - 1] = '\0';
         strncpy(old_relpath, state->relpath, sizeof(old_relpath));
         old_relpath[PATH_MAX - 1] = '\0';
 
         // Update state for recursion
-        snprintf(state->fullpath, sizeof(state->fullpath), "%s", sub_path);
-        if (state->current_depth == 0 || state->relpath[0] == '\0') {
-            snprintf(state->relpath, sizeof(state->relpath), "%s", dir_array[i].name);
-        } else {
-            snprintf(state->relpath, sizeof(state->relpath), "%s/%s", state->relpath, dir_array[i].name);
-        }
+        strncpy(state->fullpath, sub_path, sizeof(state->fullpath));
+        state->fullpath[PATH_MAX - 1] = '\0';
 
-        // Increment depth
+        // Compute new relative path
+        char new_rel[PATH_MAX];
+        if (state->current_depth == 0 || state->relpath[0] == '\0') {
+            strncpy(new_rel, dir_array[i].name, sizeof(new_rel));
+            new_rel[PATH_MAX - 1] = '\0';
+        } else {
+            if (fsp_path_join(state->relpath, dir_array[i].name, new_rel, sizeof(new_rel)) < 0) {
+                fprintf(stderr, "Error: relative path truncated: %s/%s\n", state->relpath, dir_array[i].name);
+                free(dir_array);
+                closedir(dir);
+                return -1;
+            }
+        }
+        // Update relpath in state
+        strncpy(state->relpath, new_rel, sizeof(state->relpath));
+        state->relpath[PATH_MAX - 1] = '\0';
+
+        // Increment depth and recurse
         state->current_depth++;
         int ret = fsp_walk_dir_recursive(state->fullpath, cbs, state);
         state->current_depth--;
@@ -234,6 +250,7 @@ int fsp_walk_dir_recursive(const char *root_path,
             return ret;
         }
     }
+
 
 
     free(dir_array);

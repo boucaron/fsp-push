@@ -190,3 +190,35 @@ static inline void fsp_dir_entries_free(fsp_dir_entries_t *entries)
     entries->num_files = 0;
     entries->cap_files = 0;
 }
+
+
+// ------------------------------------------------------------------------
+// Safely join two paths into dest buffer (size = PATH_MAX)
+// Returns 0 on success, -1 if truncated
+// ------------------------------------------------------------------------
+static int fsp_path_join(const char *base, const char *name, char *dest, size_t dest_size)
+{
+    if (!base || !name || !dest || dest_size == 0)
+        return -1;
+
+    dest[0] = '\0';
+
+    // snprintf guarantees null-termination
+    int n = snprintf(dest, dest_size, "%s", base);
+    if (n < 0 || (size_t)n >= dest_size) return -1; // truncated
+
+    // Append slash if needed
+    size_t len = strlen(dest);
+    if (len > 0 && dest[len - 1] != '/') {
+        if (len + 1 >= dest_size) return -1;
+        dest[len] = '/';
+        dest[len + 1] = '\0';
+        len++;
+    }
+
+    // Append name
+    n = snprintf(dest + len, dest_size - len, "%s", name);
+    if (n < 0 || (size_t)n >= dest_size - len) return -1;
+
+    return 0;
+}
