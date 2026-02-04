@@ -4,39 +4,8 @@
 #include <string.h>
 #include <stdio.h>
 #include <errno.h>
-
 #include <openssl/evp.h>
 
-/* =========================================================================
- * Internal helpers
- * ========================================================================= */
-
-static fsp_file_entry_t *
-fsp_append_file_entry(fsp_walker_state_t *state,
-                  const char *name,
-                  uint64_t size,
-                  uint32_t depth)
-{
-    fsp_dir_entries_t *entries = &state->entries;
-
-    if (entries->num_files >= entries->cap_files) {
-        size_t new_cap = entries->cap_files ? entries->cap_files * 2 : 64;
-        fsp_file_entry_t *nf =
-            realloc(entries->files, new_cap * sizeof(*nf));
-        if (!nf) return NULL;
-        entries->files = nf;
-        entries->cap_files = new_cap;
-    }
-
-    fsp_file_entry_t *f = &entries->files[entries->num_files++];
-    memset(f, 0, sizeof(*f));
-
-    strncpy(f->name, name, sizeof(f->name) - 1);
-    f->size  = size;
-   
-
-    return f;
-}
 
 /* =========================================================================
  * SHA256 file + chunk hashing (single pass, EVP)
@@ -52,19 +21,11 @@ fsp_compute_file_and_chunks(const char *path,
     }
 
     FILE *fp = fopen(path, "rb");
-    if (!fp) {
-        perror("fopen");
-        return -1;
-    }
+    if (!fp) { perror("fopen"); return -1; }
 
     EVP_MD_CTX *file_ctx  = EVP_MD_CTX_new();
     EVP_MD_CTX *chunk_ctx = EVP_MD_CTX_new();
-    if (!file_ctx || !chunk_ctx) {
-        fclose(fp);
-        EVP_MD_CTX_free(file_ctx);
-        EVP_MD_CTX_free(chunk_ctx);
-        return -1;
-    }
+    if (!file_ctx || !chunk_ctx) { fclose(fp); EVP_MD_CTX_free(file_ctx); EVP_MD_CTX_free(chunk_ctx); return -1; }
 
     EVP_DigestInit_ex(file_ctx,  EVP_sha256(), NULL);
     EVP_DigestInit_ex(chunk_ctx, EVP_sha256(), NULL);
@@ -74,25 +35,15 @@ fsp_compute_file_and_chunks(const char *path,
 
     uint64_t chunk_bytes = 0;
     size_t   cap_chunks  = 0;
-
     unsigned char (*chunks)[SHA256_DIGEST_LENGTH] = NULL;
 
     while (!feof(fp)) {
         size_t n = fread(buf, 1, buf_size, fp);
-        if (ferror(fp)) {
-            perror("fread");
-            fclose(fp);
-            EVP_MD_CTX_free(file_ctx);
-            EVP_MD_CTX_free(chunk_ctx);
-            free(chunks);
-            return -1;
-        }
-
+        if (ferror(fp)) { perror("fread"); fclose(fp); EVP_MD_CTX_free(file_ctx); EVP_MD_CTX_free(chunk_ctx); free(chunks); return -1; }
         if (n == 0) break;
 
         EVP_DigestUpdate(file_ctx, buf, n);
 
-        // Only compute chunks if file >= FSP_CHUNK_SIZE
         if (entry->size >= FSP_CHUNK_SIZE) {
             EVP_DigestUpdate(chunk_ctx, buf, n);
             chunk_bytes += n;
@@ -101,13 +52,7 @@ fsp_compute_file_and_chunks(const char *path,
                 if (entry->num_chunks >= cap_chunks) {
                     size_t new_cap = cap_chunks ? cap_chunks * 2 : 16;
                     void *tmp = realloc(chunks, new_cap * sizeof(*chunks));
-                    if (!tmp) {
-                        fclose(fp);
-                        EVP_MD_CTX_free(file_ctx);
-                        EVP_MD_CTX_free(chunk_ctx);
-                        free(chunks);
-                        return -1;
-                    }
+                    if (!tmp) { fclose(fp); EVP_MD_CTX_free(file_ctx); EVP_MD_CTX_free(chunk_ctx); free(chunks); return -1; }
                     chunks = tmp;
                     cap_chunks = new_cap;
                 }
@@ -125,23 +70,15 @@ fsp_compute_file_and_chunks(const char *path,
         if (entry->num_chunks >= cap_chunks) {
             size_t new_cap = cap_chunks ? cap_chunks * 2 : 16;
             void *tmp = realloc(chunks, new_cap * sizeof(*chunks));
-            if (!tmp) {
-                fclose(fp);
-                EVP_MD_CTX_free(file_ctx);
-                EVP_MD_CTX_free(chunk_ctx);
-                free(chunks);
-                return -1;
-            }
+            if (!tmp) { fclose(fp); EVP_MD_CTX_free(file_ctx); EVP_MD_CTX_free(chunk_ctx); free(chunks); return -1; }
             chunks = tmp;
             cap_chunks = new_cap;
         }
-
         EVP_DigestFinal_ex(chunk_ctx, chunks[entry->num_chunks], NULL);
         entry->num_chunks++;
     }
 
     EVP_DigestFinal_ex(file_ctx, entry->file_hash, NULL);
-
     entry->chunk_hashes = chunks;
     entry->cap_chunks   = cap_chunks;
 
@@ -152,116 +89,105 @@ fsp_compute_file_and_chunks(const char *path,
     return 0;
 }
 
-
 /* =========================================================================
- * Public API
+ * Debug helpers
  * ========================================================================= */
-
-void
-fsp_file_processor_init(fsp_walker_state_t *state)
-{
-    memset(&state->entries, 0, sizeof(state->entries));
-    state->current_files = 0;
-    state->current_bytes = 0;
-}
-
-int
-fsp_file_processor_process_file(const char *full_path,
-                                const char *rel_path,
-                                const struct stat *st,
-                                fsp_walker_state_t *state)
-{
-    fsp_file_entry_t *entry =
-        fsp_append_file_entry(state, rel_path, st->st_size,
-                          state->current_depth);
-    if (!entry)
-        return -1;
-
-
-    double t0 = fsp_now_msec();
-    if (fsp_compute_file_and_chunks(full_path, entry, state) < 0) {
-        fprintf(stderr, "hash failed: %s\n", full_path);
-        return -1;
-    }
-    double t1 = fsp_now_msec();
-    state->dry_run->hashing_time += t1 - t0;
-
-    state->current_files++;
-    state->current_bytes += st->st_size;
-
-    if ((state->max_files && state->current_files >= state->max_files) ||
-        (state->max_bytes && state->current_bytes >= state->max_bytes)) {
-        return fsp_file_processor_flush_batch(state);
-    }
-
-    return 0;
-}
-
 static void fsp_print_sha256(const unsigned char hash[SHA256_DIGEST_LENGTH])
 {
     for (int i = 0; i < SHA256_DIGEST_LENGTH; i++)
         fprintf(stderr,"%02x", hash[i]);
 }
 
+/* =========================================================================
+ * Public API
+ * ========================================================================= */
 
-
-static void fsp_file_processor_flush_batch_debug(fsp_walker_state_t *state) {
-    fprintf(stderr,"\n=== FILE_LIST SEND ===\n");
-    fprintf(stderr,"Files      : %zu\n", state->entries.num_files);
-    fprintf(stderr,"Total bytes: %llu\n",
-           (unsigned long long)state->current_bytes);
-    fprintf(stderr,"----------------------\n");
-
-    for (size_t i = 0; i < state->entries.num_files; i++) {
-        fsp_file_entry_t *f = &state->entries.files[i];
-
-        fprintf(stderr,"File #%zu\n", i + 1);
-        fprintf(stderr,"  Path   : %s\n", f->name);
-        fprintf(stderr,"  Size   : %llu bytes\n",
-               (unsigned long long)f->size);
-        fprintf(stderr,"  Depth  : %u\n", state->current_depth);
-
-        fprintf(stderr,"  SHA256 : ");
-        fsp_print_sha256(f->file_hash);
-        fprintf(stderr,"\n");
-
-        if (f->num_chunks > 0) {
-            fprintf(stderr,"  Chunks : %llu (size=%llu bytes)\n",
-                   (unsigned long long)f->num_chunks,
-                   (unsigned long long)FSP_CHUNK_SIZE);
-
-            for (uint64_t c = 0; c < f->num_chunks; c++) {
-                fprintf(stderr,"    [%3llu] ",
-                       (unsigned long long)c);
-                fsp_print_sha256(f->chunk_hashes[c]);
-                fprintf(stderr,"\n");
-            }
-        }
-        fprintf(stderr,"\n");
-    }
-
-    fprintf(stderr,"=== END FILE_LIST ===\n");
+void fsp_file_processor_init(fsp_walker_state_t *state)
+{
+    memset(&state->entries, 0, sizeof(state->entries));
+    state->current_files = 0;
+    state->current_bytes = 0;
 }
 
-int
-fsp_file_processor_flush_batch(fsp_walker_state_t *state)
+/**
+ * Main directory callback implementing **three-phase batching**
+ */
+int fsp_file_processor_process_directory(fsp_walker_state_t *state)
 {
-    if (state->entries.num_files == 0)
-        return 0;
+    fsp_dir_entries_t *entries = &state->entries;
+    size_t total_files = entries->num_files;
 
-    fprintf(stderr, ">>> Sending batch: %zu files, %llu bytes\n",
-           state->entries.num_files,
-           (unsigned long long)state->current_bytes);
-    fsp_file_processor_flush_batch_debug(state);                 
+    size_t file_index = 0;
 
-    for (size_t i = 0; i < state->entries.num_files; i++) {
-        free(state->entries.files[i].chunk_hashes);
-        state->entries.files[i].chunk_hashes = NULL;
-        state->entries.files[i].num_chunks   = 0;
-        state->entries.files[i].cap_chunks   = 0;
+    while (file_index < total_files) {
+        size_t batch_files = 0;
+        uint64_t batch_bytes = 0;
+
+        // --- Build a batch ---
+        while ((file_index + batch_files) < total_files &&
+               (!state->max_files || batch_files < state->max_files) &&
+               (!state->max_bytes || (batch_bytes + entries->files[file_index + batch_files].size) <= state->max_bytes))
+        {
+            batch_bytes += entries->files[file_index + batch_files].size;
+            batch_files++;
+        }
+
+        if (batch_files == 0) {
+            // Single huge file exceeds max_bytes threshold
+            batch_files = 1;
+            batch_bytes = entries->files[file_index].size;
+        }
+
+        // --- Phase 1: Send metadata (sizes) ---
+        fprintf(stderr, "\n[PHASE 1] Sending metadata for batch starting at file %zu\n", file_index);
+        for (size_t i = 0; i < batch_files; i++) {
+            fsp_file_entry_t *f = &entries->files[file_index + i];
+            fprintf(stderr,"  File: %s, Size: %llu\n", f->name, (unsigned long long)f->size);
+        }
+
+        // --- Phase 2: Compute SHA256 + send data ---
+        fprintf(stderr, "[PHASE 2] Hashing and sending data...\n");
+        for (size_t i = 0; i < batch_files; i++) {
+            fsp_file_entry_t *f = &entries->files[file_index + i];
+            char full_path[PATH_MAX];
+            // snprintf(full_path, sizeof(full_path), "%s/%s", state->fullpath, f->name);
+            if (fsp_path_join(state->fullpath, f->name, full_path, sizeof(full_path)) < 0) {
+               fprintf(stderr, "Error: absolute file path truncated: %s/%s\n", state->fullpath, f->name);
+               return -1;
+            }
+
+            if (fsp_compute_file_and_chunks(full_path, f, state) < 0) {
+                fprintf(stderr, "Error hashing file: %s\n", full_path);
+                return -1;
+            }
+
+            fprintf(stderr,"  Sent: %s (SHA256: ", f->name);
+            fsp_print_sha256(f->file_hash);
+            fprintf(stderr,")\n");
+        }
+
+        // --- Phase 3: Send metadata with hashes ---
+        fprintf(stderr, "[PHASE 3] Sending metadata with hashes...\n");
+        for (size_t i = 0; i < batch_files; i++) {
+            fsp_file_entry_t *f = &entries->files[file_index + i];
+            fprintf(stderr,"  File: %s, SHA256: ", f->name);
+            fsp_print_sha256(f->file_hash);
+            fprintf(stderr,"\n");
+        }
+
+        // --- Free chunk hashes for this batch to save memory ---
+        for (size_t i = 0; i < batch_files; i++) {
+            free(entries->files[file_index + i].chunk_hashes);
+            entries->files[file_index + i].chunk_hashes = NULL;
+            entries->files[file_index + i].num_chunks = 0;
+            entries->files[file_index + i].cap_chunks = 0;
+        }
+
+        file_index += batch_files;
     }
 
-    state->entries.num_files = 0;
+    // Reset directory entries for next directory
+    entries->num_files = 0;
     state->current_files = 0;
     state->current_bytes = 0;
 
