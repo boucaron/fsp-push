@@ -4,89 +4,240 @@
 #include <string.h>
 #include <stdio.h>
 #include <errno.h>
+#include <unistd.h>
 #include <openssl/evp.h>
 
 
+
+/*
+ * Small file no chunk
+ * 
+ * READ FILE
+ *  - SEND DATA
+ *  - HASH DATA 
+ * 
+ * Hash of the file stored in file_hash
+ * 
+ */
+static int fsp_compute_small_file(const char *path,
+                                  fsp_file_entry_t *entry,
+                                  fsp_walker_state_t *state)
+{
+    if (!state->file_buf || state->file_buf_size == 0) {
+        fprintf(stderr, "fsp_compute_small_file: invalid state buffer\n");
+        return -1;
+    }
+
+    FILE *fp = fopen(path, "rb");
+    if (!fp) {
+        perror("fopen");
+        return -1;
+    }
+
+#ifdef _WIN32
+    _setmode(_fileno(stdout), _O_BINARY);
+#endif
+
+    EVP_MD_CTX *file_ctx = EVP_MD_CTX_new();
+    if (!file_ctx) {
+        fclose(fp);
+        return -1;
+    }
+
+    if (EVP_DigestInit_ex(file_ctx, EVP_sha256(), NULL) != 1) {
+        fclose(fp);
+        EVP_MD_CTX_free(file_ctx);
+        return -1;
+    }
+
+    uint8_t *buf = state->file_buf;
+    size_t buf_size = state->file_buf_size;
+    int out_fd = fileno(stdout);
+
+    for (;;) {
+        size_t n = fread(buf, 1, buf_size, fp);
+        if (n == 0) {
+            if (ferror(fp)) {
+                perror("fread");
+                fclose(fp);
+                EVP_MD_CTX_free(file_ctx);
+                return -1;
+            }
+            break; // EOF
+        }
+
+        // Kernel-level pipe write (handles backpressure)
+        size_t off = 0;
+        while (off < n) {
+            ssize_t w = write(out_fd, buf + off, n - off);
+            if (w < 0) {
+                perror("write");
+                fclose(fp);
+                EVP_MD_CTX_free(file_ctx);
+                return -1;
+            }
+            off += (size_t)w;
+        }
+
+        // Hash exactly what was sent
+        EVP_DigestUpdate(file_ctx, buf, n);
+    }
+
+    // Store final hash
+    EVP_DigestFinal_ex(file_ctx, entry->file_hash, NULL);
+
+    fclose(fp);
+    EVP_MD_CTX_free(file_ctx);
+    return 0;
+}
+
+
+/*
+    Big file Hash
+    Cut the file by 128MB offsets
+    Hash individually in chunks
+    Finally take all SHA256 of each chunks and compute the SHA256 of it 
+     aka. Merkle Level 0
+
+     Hash of the Merkle Level 0 stored in file_hash
+     Individual hashes of the chunks
+
+*/
+static int fsp_compute_big_file(const char *path,
+                                fsp_file_entry_t *entry,
+                                fsp_walker_state_t *state)
+{
+    if (!state->file_buf || state->file_buf_size == 0) {
+        fprintf(stderr, "fsp_compute_big_file: invalid state buffer\n");
+        return -1;
+    }
+
+    FILE *fp = fopen(path, "rb");
+    if (!fp) {
+        perror("fopen");
+        return -1;
+    }
+
+#ifdef _WIN32
+    _setmode(_fileno(stdout), _O_BINARY);
+#endif
+
+    uint64_t total_chunks = (entry->size + FSP_CHUNK_SIZE - 1) / FSP_CHUNK_SIZE;
+
+    // Ensure chunk_hashes array has enough capacity
+    if (entry->cap_chunks < total_chunks) {
+        unsigned char (*tmp)[SHA256_DIGEST_LENGTH] = realloc(entry->chunk_hashes,
+                                                total_chunks * sizeof(*entry->chunk_hashes));
+        if (!tmp) {
+            perror("realloc");
+            fclose(fp);
+            return -1;
+        }
+        entry->chunk_hashes = tmp;
+        entry->cap_chunks = total_chunks;
+    }
+
+    entry->num_chunks = 0;
+
+    EVP_MD_CTX *chunk_ctx  = EVP_MD_CTX_new();
+    EVP_MD_CTX *merkle_ctx = EVP_MD_CTX_new();
+    if (!chunk_ctx || !merkle_ctx) {
+        fclose(fp);
+        EVP_MD_CTX_free(chunk_ctx);
+        EVP_MD_CTX_free(merkle_ctx);
+        return -1;
+    }
+
+    EVP_DigestInit_ex(merkle_ctx, EVP_sha256(), NULL);
+
+    uint8_t *buf = state->file_buf;
+    size_t buf_size = state->file_buf_size;
+    int out_fd = fileno(stdout);
+    uint64_t remaining_bytes = entry->size;
+
+    while (remaining_bytes > 0) {
+        EVP_DigestInit_ex(chunk_ctx, EVP_sha256(), NULL);
+
+        uint64_t chunk_bytes = remaining_bytes < FSP_CHUNK_SIZE ? remaining_bytes : FSP_CHUNK_SIZE;
+        uint64_t processed = 0;
+
+        while (processed < chunk_bytes) {
+            size_t to_read = buf_size;
+            if (to_read > chunk_bytes - processed)
+                to_read = (size_t)(chunk_bytes - processed);
+
+            size_t n = fread(buf, 1, to_read, fp);
+            if (n == 0) {
+                if (ferror(fp)) {
+                    perror("fread");
+                    fclose(fp);
+                    EVP_MD_CTX_free(chunk_ctx);
+                    EVP_MD_CTX_free(merkle_ctx);
+                    return -1;
+                }
+                break;
+            }
+
+            // Write to stdout (kernel-level, pipe safe)
+            size_t off = 0;
+            while (off < n) {
+                ssize_t w = write(out_fd, buf + off, n - off);
+                if (w < 0) {
+                    perror("write");
+                    fclose(fp);
+                    EVP_MD_CTX_free(chunk_ctx);
+                    EVP_MD_CTX_free(merkle_ctx);
+                    return -1;
+                }
+                off += (size_t)w;
+            }
+
+            EVP_DigestUpdate(chunk_ctx, buf, n);
+            processed += n;
+        }
+
+        // Finalize chunk hash
+        EVP_DigestFinal_ex(chunk_ctx, entry->chunk_hashes[entry->num_chunks], NULL);
+
+        // Update Merkle Level 0
+        EVP_DigestUpdate(merkle_ctx, entry->chunk_hashes[entry->num_chunks], SHA256_DIGEST_LENGTH);
+
+        entry->num_chunks++;
+        remaining_bytes -= chunk_bytes;
+    }
+
+    // Final Merkle hash
+    EVP_DigestFinal_ex(merkle_ctx, entry->file_hash, NULL);
+
+    fclose(fp);
+    EVP_MD_CTX_free(chunk_ctx);
+    EVP_MD_CTX_free(merkle_ctx);
+
+    return 0;
+}
+
+
 /* =========================================================================
- * SHA256 file + chunk hashing (single pass, EVP)
+ * SHA256 file hashing 
+ * 
+ * If file is under 128MB there is no chunk and the hash is the file hash
+ * Otherwise, it is the Merkle 0 hash of the chunks: all chunks are SHA256 
+ *  hashes made individually (can be parallelized) and the resulting hash
+ *  is the hash of the chunks' hashes 
+ * 
  * ========================================================================= */
 static int
 fsp_compute_file_and_chunks(const char *path,
                             fsp_file_entry_t *entry,
                             fsp_walker_state_t *state)
 {
-    if (!state->file_buf || state->file_buf_size == 0) {
-        fprintf(stderr, "fsp_compute_file_and_chunks: invalid state buffer\n");
-        return -1;
+    int ret;
+    if ( entry->size > FSP_CHUNK_SIZE ) {
+        ret = fsp_compute_big_file(path, entry, state);
+    } else {
+        ret = fsp_compute_small_file(path, entry, state);
     }
-
-    FILE *fp = fopen(path, "rb");
-    if (!fp) { perror("fopen"); return -1; }
-
-    EVP_MD_CTX *file_ctx  = EVP_MD_CTX_new();
-    EVP_MD_CTX *chunk_ctx = EVP_MD_CTX_new();
-    if (!file_ctx || !chunk_ctx) { fclose(fp); EVP_MD_CTX_free(file_ctx); EVP_MD_CTX_free(chunk_ctx); return -1; }
-
-    EVP_DigestInit_ex(file_ctx,  EVP_sha256(), NULL);
-    EVP_DigestInit_ex(chunk_ctx, EVP_sha256(), NULL);
-
-    uint8_t *buf = state->file_buf;
-    size_t buf_size = state->file_buf_size;
-
-    uint64_t chunk_bytes = 0;
-    size_t   cap_chunks  = 0;
-    unsigned char (*chunks)[SHA256_DIGEST_LENGTH] = NULL;
-
-    while (!feof(fp)) {
-        size_t n = fread(buf, 1, buf_size, fp);
-        if (ferror(fp)) { perror("fread"); fclose(fp); EVP_MD_CTX_free(file_ctx); EVP_MD_CTX_free(chunk_ctx); free(chunks); return -1; }
-        if (n == 0) break;
-
-        EVP_DigestUpdate(file_ctx, buf, n);
-
-        if (entry->size >= FSP_CHUNK_SIZE) {
-            EVP_DigestUpdate(chunk_ctx, buf, n);
-            chunk_bytes += n;
-
-            if (chunk_bytes >= FSP_CHUNK_SIZE) {
-                if (entry->num_chunks >= cap_chunks) {
-                    size_t new_cap = cap_chunks ? cap_chunks * 2 : 16;
-                    void *tmp = realloc(chunks, new_cap * sizeof(*chunks));
-                    if (!tmp) { fclose(fp); EVP_MD_CTX_free(file_ctx); EVP_MD_CTX_free(chunk_ctx); free(chunks); return -1; }
-                    chunks = tmp;
-                    cap_chunks = new_cap;
-                }
-
-                EVP_DigestFinal_ex(chunk_ctx, chunks[entry->num_chunks], NULL);
-                entry->num_chunks++;
-                chunk_bytes = 0;
-                EVP_DigestInit_ex(chunk_ctx, EVP_sha256(), NULL);
-            }
-        }
-    }
-
-    // Final partial chunk
-    if (chunk_bytes > 0 && entry->size >= FSP_CHUNK_SIZE) {
-        if (entry->num_chunks >= cap_chunks) {
-            size_t new_cap = cap_chunks ? cap_chunks * 2 : 16;
-            void *tmp = realloc(chunks, new_cap * sizeof(*chunks));
-            if (!tmp) { fclose(fp); EVP_MD_CTX_free(file_ctx); EVP_MD_CTX_free(chunk_ctx); free(chunks); return -1; }
-            chunks = tmp;
-            cap_chunks = new_cap;
-        }
-        EVP_DigestFinal_ex(chunk_ctx, chunks[entry->num_chunks], NULL);
-        entry->num_chunks++;
-    }
-
-    EVP_DigestFinal_ex(file_ctx, entry->file_hash, NULL);
-    entry->chunk_hashes = chunks;
-    entry->cap_chunks   = cap_chunks;
-
-    fclose(fp);
-    EVP_MD_CTX_free(file_ctx);
-    EVP_MD_CTX_free(chunk_ctx);
-
-    return 0;
+    return ret;
 }
 
 /* =========================================================================
@@ -108,6 +259,71 @@ void fsp_file_processor_init(fsp_walker_state_t *state)
     state->current_files = 0;
     state->current_bytes = 0;
 }
+
+
+static int fsp_send_file_entry(const fsp_file_entry_t *entry) {
+
+#ifdef _WIN32
+    _setmode(_fileno(stdout), _O_BINARY);
+#endif
+
+    int out_fd = fileno(stdout);
+
+
+    size_t off;
+    const uint8_t *ptr;
+
+    // Write 'name' field
+    off = 0;
+    ptr = (const uint8_t *)entry->name;
+    while (off < sizeof(entry->name)) {
+        ssize_t w = write(out_fd, ptr + off, sizeof(entry->name) - off);
+        if (w < 0) { perror("write"); return -1; }
+        off += (size_t)w;
+    }
+
+    // Write 'size'
+    off = 0;
+    ptr = (const uint8_t *)&entry->size;
+    while (off < sizeof(entry->size)) {
+        ssize_t w = write(out_fd, ptr + off, sizeof(entry->size) - off);
+        if (w < 0) { perror("write"); return -1; }
+        off += (size_t)w;
+    }
+
+    // Write 'file_hash'
+    off = 0;
+    ptr = (const uint8_t *)entry->file_hash;
+    while (off < SHA256_DIGEST_LENGTH) {
+        ssize_t w = write(out_fd, ptr + off, SHA256_DIGEST_LENGTH - off);
+        if (w < 0) { perror("write"); return -1; }
+        off += (size_t)w;
+    }
+
+    // Write 'num_chunks'
+    off = 0;
+    ptr = (const uint8_t *)&entry->num_chunks;
+    while (off < sizeof(entry->num_chunks)) {
+        ssize_t w = write(out_fd, ptr + off, sizeof(entry->num_chunks) - off);
+        if (w < 0) { perror("write"); return -1; }
+        off += (size_t)w;
+    }
+
+    // Write the dynamic chunk hashes
+    if (entry->chunk_hashes && entry->num_chunks > 0) {
+        size_t chunks_size = entry->num_chunks * SHA256_DIGEST_LENGTH;
+        off = 0;
+        ptr = (const uint8_t *)entry->chunk_hashes;
+        while (off < chunks_size) {
+            ssize_t w = write(out_fd, ptr + off, chunks_size - off);
+            if (w < 0) { perror("write"); return -1; }
+            off += (size_t)w;
+        }
+    }
+
+    return 0;
+}
+
 
 /**
  * Main directory callback implementing **three-phase batching**
@@ -138,11 +354,41 @@ int fsp_file_processor_process_directory(fsp_walker_state_t *state)
             batch_bytes = entries->files[file_index].size;
         }
 
+        int out_fd = fileno(stdout);
+
         // --- Phase 1: Send metadata (sizes) ---
-        fprintf(stderr, "\n[PHASE 1] Sending metadata for batch starting at file %zu\n", file_index);
+        // Send FILE_LIST header ---
+        const char *header = "FILE_LIST\n";
+        size_t header_len = strlen(header);
+        size_t off = 0;
+        while (off < header_len) {
+            ssize_t w = write(out_fd, header + off, header_len - off);
+            if (w < 0) { perror("write"); return -1; }
+            off += (size_t)w;
+        }
+        // --- Send FILES: <count>\n header ---
+        char files_line[64];
+        int n = snprintf(files_line, sizeof(files_line), "FILES: %zu\n", batch_files);
+        if (n < 0 || (size_t)n >= sizeof(files_line)) {
+            fprintf(stderr, "fsp_send_file_list_batch: snprintf error\n");
+            return -1;
+        }
+        off = 0;
+        while (off < (size_t)n) {
+            ssize_t w = write(out_fd, files_line + off, (size_t)n - off);
+            if (w < 0) { perror("write"); return -1; }
+            off += (size_t)w;
+        }
+
+        fprintf(stderr, "\n[PHASE 1] Sending metadata for batch starting at file %zu\n", file_index);                
         for (size_t i = 0; i < batch_files; i++) {
             fsp_file_entry_t *f = &entries->files[file_index + i];
             fprintf(stderr,"  File: %s, Size: %llu\n", f->name, (unsigned long long)f->size);
+
+            int ret = fsp_send_file_entry(f);
+            if ( ret < 0 ) {
+                return ret;
+            }
         }
 
         // --- Phase 2: Compute SHA256 + send data ---
@@ -167,9 +413,28 @@ int fsp_file_processor_process_directory(fsp_walker_state_t *state)
         }
 
         // --- Phase 3: Send metadata with hashes ---
+        // --- Send FILES: <count>\n header ---
+        char hfiles_line[64];
+        int nn = snprintf(hfiles_line, sizeof(hfiles_line), "HASH FILES: %zu\n", batch_files);
+        if (nn < 0 || (size_t)nn >= sizeof(hfiles_line)) {
+            fprintf(stderr, "fsp_send_file_list_batch: snprintf error\n");
+            return -1;
+        }
+        off = 0;
+        while (off < (size_t)nn) {
+            ssize_t w = write(out_fd, hfiles_line + off, (size_t)nn - off);
+            if (w < 0) { perror("write"); return -1; }
+            off += (size_t)w;
+        }
         fprintf(stderr, "[PHASE 3] Sending metadata with hashes...\n");
         for (size_t i = 0; i < batch_files; i++) {
             fsp_file_entry_t *f = &entries->files[file_index + i];
+
+            int ret = fsp_send_file_entry(f);
+            if ( ret < 0 ) {
+                return ret;
+            }
+
             fprintf(stderr,"  File: %s, SHA256: ", f->name);
             fsp_print_sha256(f->file_hash);
             fprintf(stderr,"\n");

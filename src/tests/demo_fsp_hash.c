@@ -15,18 +15,18 @@
 int file_batching_callback(fsp_walker_state_t *state) {
     if (!state || state->entries.num_files == 0) return 0;
 
-    printf("Directory: %s\n", state->relpath); //Could use fullpath 
-    printf("Depth: %d\n", state->current_depth);
+    fprintf(stderr, "Directory: %s\n", state->relpath); //Could use fullpath 
+    fprintf(stderr, "Depth: %d\n", state->current_depth);
     for (size_t i = 0; i < state->entries.num_files; i++) {
         fsp_file_entry_t *fe = &state->entries.files[i];
-        printf("  File: %s (size: %" PRIu64 " bytes)\n",
+        fprintf(stderr, "  File: %s (size: %" PRIu64 " bytes)\n",
                fe->name, fe->size);
     }
 
 
-    printf("Batching start\n");
+    fprintf(stderr, "Batching start\n");
     int ret = fsp_file_processor_process_directory(state);
-    printf("Batching end\n");
+    fprintf(stderr, "Batching end\n");
     return ret;
 }
 
@@ -73,7 +73,7 @@ int main(int argc, char **argv) {
     cbs.max_bytes     = FSP_MAX_FILE_LIST_BYTES;
     cbs.max_depth     = FSP_MAX_WALK_DEPTH;
 
-    printf("Starting DRY_RUN on: %s\n", root_path);
+    fprintf(stderr, "Starting DRY_RUN on: %s\n", root_path);
 
     int ret = fsp_walk(root_path, &cbs, &state, FSP_WALK_MODE_DRY_RUN);
     if (ret < 0) {
@@ -81,7 +81,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    printf("\nDry-run completed. Summary:\n");
+    fprintf(stderr, "\nDry-run completed. Summary:\n");
     fsp_dry_run_report(&dry_run_stats);
 
     // Cleanup allocated memory

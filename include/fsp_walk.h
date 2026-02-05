@@ -20,7 +20,7 @@ typedef struct {
     char     name[NAME_MAX + 1];   // Entry name
     uint64_t size;                 // File size in bytes
   
-    // SHA256 hash of the entire file
+    // SHA256 hash of the entire file if there is no chunk, otherwise it is the SHA256 hash of all the chunks_hashes
     unsigned char file_hash[SHA256_DIGEST_LENGTH];
 
     // SHA256 hash of each FSP_CHUNK_SIZE block
