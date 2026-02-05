@@ -335,6 +335,30 @@ int fsp_file_processor_process_directory(fsp_walker_state_t *state)
 
     size_t file_index = 0;
 
+#ifdef _WIN32
+    _setmode(_fileno(stdout), _O_BINARY);
+#endif
+
+
+    // --- SEND Directory: <directoryname> \n ---
+    char dir_line[PATH_MAX + 32]; // extra space for prefix and newline
+    int na = snprintf(dir_line, sizeof(dir_line), "DIRECTORY: %s\n", state->relpath);
+    if (na < 0 || (size_t)na >= sizeof(dir_line)) {
+        fprintf(stderr, "fsp_send_directory: snprintf error\n");
+        return -1;
+    }
+
+    size_t off = 0;
+    int out_fd = fileno(stdout);
+    while (off < (size_t)na) {
+        ssize_t w = write(out_fd, dir_line + off, (size_t)na - off);
+        if (w < 0) {
+            perror("write");
+            return -1;
+        }
+        off += (size_t)w;
+    }
+
     while (file_index < total_files) {
         size_t batch_files = 0;
         uint64_t batch_bytes = 0;
@@ -352,15 +376,13 @@ int fsp_file_processor_process_directory(fsp_walker_state_t *state)
             // Single huge file exceeds max_bytes threshold
             batch_files = 1;
             batch_bytes = entries->files[file_index].size;
-        }
-
-        int out_fd = fileno(stdout);
+        }        
 
         // --- Phase 1: Send metadata (sizes) ---
         // Send FILE_LIST header ---
         const char *header = "FILE_LIST\n";
         size_t header_len = strlen(header);
-        size_t off = 0;
+        off = 0;
         while (off < header_len) {
             ssize_t w = write(out_fd, header + off, header_len - off);
             if (w < 0) { perror("write"); return -1; }
