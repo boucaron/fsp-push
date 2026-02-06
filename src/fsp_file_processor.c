@@ -358,15 +358,13 @@ int fsp_file_processor_process_directory(fsp_walker_state_t *state)
             ssize_t w = write(out_fd, files_line + off, (size_t)n - off);
             if (w < 0) { perror("write"); return -1; }
             off += (size_t)w;
-        }
+        }    
 
-        // TODO: REFACTORING
-        // Use big output buffer to reduce amount of write syscalls !!!
-
-        fprintf(stderr, "\n[PHASE 1] Sending metadata for batch starting at file %zu\n", file_index);                
+        // fprintf(stderr, "\n[PHASE 1] Sending metadata for batch starting at file %zu\n", file_index);                
         for (size_t i = 0; i < batch_files; i++) {
             fsp_file_entry_t *f = &entries->files[file_index + i];
-            fprintf(stderr,"  File: %s, Size: %llu\n", f->name, (unsigned long long)f->size);
+            // VERBOSE
+            // fprintf(stderr,"  File: %s, Size: %llu\n", f->name, (unsigned long long)f->size);
            
             int ret = fsp_send_file_entry_buf(&state->protowritebuf, f);
             if ( ret < 0 ) {
@@ -379,7 +377,7 @@ int fsp_file_processor_process_directory(fsp_walker_state_t *state)
         }
 
         // --- Phase 2: Compute SHA256 + send data ---
-        fprintf(stderr, "[PHASE 2] Hashing and sending data...\n");
+        // fprintf(stderr, "[PHASE 2] Hashing and sending data...\n");
         for (size_t i = 0; i < batch_files; i++) {
             fsp_file_entry_t *f = &entries->files[file_index + i];
             char full_path[PATH_MAX];
@@ -394,9 +392,10 @@ int fsp_file_processor_process_directory(fsp_walker_state_t *state)
                 return -1;
             }
 
-            fprintf(stderr,"  Sent: %s (SHA256: ", f->name);
-            fsp_print_sha256(f->file_hash);
-            fprintf(stderr,")\n");
+            // VERBOSE
+            // fprintf(stderr,"  Sent: %s (SHA256: ", f->name);
+            // fsp_print_sha256(f->file_hash);
+            // fprintf(stderr,")\n");
         }
 
         // --- Phase 3: Send metadata with hashes ---
@@ -413,7 +412,7 @@ int fsp_file_processor_process_directory(fsp_walker_state_t *state)
             if (w < 0) { perror("write"); return -1; }
             off += (size_t)w;
         }
-        fprintf(stderr, "[PHASE 3] Sending metadata with hashes...\n");
+        // fprintf(stderr, "[PHASE 3] Sending metadata with hashes...\n");
         for (size_t i = 0; i < batch_files; i++) {
             fsp_file_entry_t *f = &entries->files[file_index + i];
 
@@ -422,9 +421,10 @@ int fsp_file_processor_process_directory(fsp_walker_state_t *state)
                 return ret;
             }
 
-            fprintf(stderr,"  File: %s, SHA256: ", f->name);
-            fsp_print_sha256(f->file_hash);
-            fprintf(stderr,"\n");
+          // VERBOSE
+          //  fprintf(stderr,"  File: %s, SHA256: ", f->name);
+          //  fsp_print_sha256(f->file_hash);
+          //  fprintf(stderr,"\n");
         }    
         ret = fsp_bw_flush(&state->protowritebuf);
         if ( ret < 0 ) { 

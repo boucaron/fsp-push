@@ -15,18 +15,20 @@
 int file_batching_callback(fsp_walker_state_t *state) {
     if (!state || state->entries.num_files == 0) return 0;
 
-    fprintf(stderr, "Directory: %s\n", state->relpath); //Could use fullpath 
+    // VERBOSE
+    /* fprintf(stderr, "Directory: %s\n", state->relpath); //Could use fullpath 
     fprintf(stderr, "Depth: %d\n", state->current_depth);
     for (size_t i = 0; i < state->entries.num_files; i++) {
         fsp_file_entry_t *fe = &state->entries.files[i];
         fprintf(stderr, "  File: %s (size: %" PRIu64 " bytes)\n",
                fe->name, fe->size);
-    }
+    } */
 
 
-    fprintf(stderr, "Batching start\n");
+    // VERBOSE
+    // fprintf(stderr, "Batching start\n");
     int ret = fsp_file_processor_process_directory(state);
-    fprintf(stderr, "Batching end\n");
+    // fprintf(stderr, "Batching end\n");
     return ret;
 }
 
