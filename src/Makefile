@@ -1,6 +1,6 @@
 CC ?= cc
-# CFLAGS ?= -O2 -Wall -Wextra -I../include 
-CFLAGS ?= -g -Wall -Wextra -I../include 
+CFLAGS ?= -O2 -Wall -Wextra -I../include 
+# CFLAGS ?= -g -Wall -Wextra -I../include 
 
 BIN_SEND = fsp-send
 BIN_RECV = fsp-recv

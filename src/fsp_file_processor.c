@@ -261,69 +261,27 @@ void fsp_file_processor_init(fsp_walker_state_t *state)
 }
 
 
-static int fsp_send_file_entry(const fsp_file_entry_t *entry) {
-
+static int fsp_send_file_entry_buf(fsp_buf_writer_t *bw,
+                                   const fsp_file_entry_t *entry)
+{
 #ifdef _WIN32
     _setmode(_fileno(stdout), _O_BINARY);
 #endif
 
-    int out_fd = fileno(stdout);
+    // Push fixed-size fields into the buffer
+    if (fsp_bw_push(bw, entry->name, sizeof(entry->name)) < 0) return -1;
+    if (fsp_bw_push(bw, &entry->size, sizeof(entry->size)) < 0) return -1;
+    if (fsp_bw_push(bw, entry->file_hash, SHA256_DIGEST_LENGTH) < 0) return -1;
+    if (fsp_bw_push(bw, &entry->num_chunks, sizeof(entry->num_chunks)) < 0) return -1;
 
-
-    size_t off;
-    const uint8_t *ptr;
-
-    // Write 'name' field
-    off = 0;
-    ptr = (const uint8_t *)entry->name;
-    while (off < sizeof(entry->name)) {
-        ssize_t w = write(out_fd, ptr + off, sizeof(entry->name) - off);
-        if (w < 0) { perror("write"); return -1; }
-        off += (size_t)w;
-    }
-
-    // Write 'size'
-    off = 0;
-    ptr = (const uint8_t *)&entry->size;
-    while (off < sizeof(entry->size)) {
-        ssize_t w = write(out_fd, ptr + off, sizeof(entry->size) - off);
-        if (w < 0) { perror("write"); return -1; }
-        off += (size_t)w;
-    }
-
-    // Write 'file_hash'
-    off = 0;
-    ptr = (const uint8_t *)entry->file_hash;
-    while (off < SHA256_DIGEST_LENGTH) {
-        ssize_t w = write(out_fd, ptr + off, SHA256_DIGEST_LENGTH - off);
-        if (w < 0) { perror("write"); return -1; }
-        off += (size_t)w;
-    }
-
-    // Write 'num_chunks'
-    off = 0;
-    ptr = (const uint8_t *)&entry->num_chunks;
-    while (off < sizeof(entry->num_chunks)) {
-        ssize_t w = write(out_fd, ptr + off, sizeof(entry->num_chunks) - off);
-        if (w < 0) { perror("write"); return -1; }
-        off += (size_t)w;
-    }
-
-    // Write the dynamic chunk hashes
-    if (entry->chunk_hashes && entry->num_chunks > 0) {
+    // Push dynamic chunk hashes, if present
+    if (entry->num_chunks > 0 && entry->chunk_hashes) {
         size_t chunks_size = entry->num_chunks * SHA256_DIGEST_LENGTH;
-        off = 0;
-        ptr = (const uint8_t *)entry->chunk_hashes;
-        while (off < chunks_size) {
-            ssize_t w = write(out_fd, ptr + off, chunks_size - off);
-            if (w < 0) { perror("write"); return -1; }
-            off += (size_t)w;
-        }
+        if (fsp_bw_push(bw, entry->chunk_hashes, chunks_size) < 0) return -1;
     }
 
     return 0;
 }
-
 
 /**
  * Main directory callback implementing **three-phase batching**
@@ -402,15 +360,22 @@ int fsp_file_processor_process_directory(fsp_walker_state_t *state)
             off += (size_t)w;
         }
 
+        // TODO: REFACTORING
+        // Use big output buffer to reduce amount of write syscalls !!!
+
         fprintf(stderr, "\n[PHASE 1] Sending metadata for batch starting at file %zu\n", file_index);                
         for (size_t i = 0; i < batch_files; i++) {
             fsp_file_entry_t *f = &entries->files[file_index + i];
             fprintf(stderr,"  File: %s, Size: %llu\n", f->name, (unsigned long long)f->size);
-
-            int ret = fsp_send_file_entry(f);
+           
+            int ret = fsp_send_file_entry_buf(&state->protowritebuf, f);
             if ( ret < 0 ) {
                 return ret;
             }
+        }
+        int ret = fsp_bw_flush(&state->protowritebuf);
+        if ( ret < 0 ) { 
+            return ret; 
         }
 
         // --- Phase 2: Compute SHA256 + send data ---
@@ -452,7 +417,7 @@ int fsp_file_processor_process_directory(fsp_walker_state_t *state)
         for (size_t i = 0; i < batch_files; i++) {
             fsp_file_entry_t *f = &entries->files[file_index + i];
 
-            int ret = fsp_send_file_entry(f);
+            int ret = fsp_send_file_entry_buf(&state->protowritebuf, f);
             if ( ret < 0 ) {
                 return ret;
             }
@@ -460,6 +425,10 @@ int fsp_file_processor_process_directory(fsp_walker_state_t *state)
             fprintf(stderr,"  File: %s, SHA256: ", f->name);
             fsp_print_sha256(f->file_hash);
             fprintf(stderr,"\n");
+        }    
+        ret = fsp_bw_flush(&state->protowritebuf);
+        if ( ret < 0 ) { 
+            return ret; 
         }
 
         // --- Free chunk hashes for this batch to save memory ---

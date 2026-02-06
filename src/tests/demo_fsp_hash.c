@@ -64,6 +64,15 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Cannot allocate file buffer of size %zu\n", state.file_buf_size);
         return 1;
     }
+#ifdef _WIN32
+    _setmode(_fileno(stdout), _O_BINARY);    
+#endif    
+    int out_fd = fileno(stdout);
+    // Allocate protocol buffer
+    if ( fsp_bw_init(&state.protowritebuf, out_fd) != 0 ) {
+        fprintf(stderr, "Cannot allocate protocol write buffer of size %u", FSP_BW_CAP);
+        return 1;
+    } 
 
     // Setup callbacks
     fsp_walk_callbacks_t cbs;
@@ -76,7 +85,7 @@ int main(int argc, char **argv) {
     fprintf(stderr, "Starting DRY_RUN on: %s\n", root_path);
 
     int ret = fsp_walk(root_path, &cbs, &state, FSP_WALK_MODE_DRY_RUN);
-    if (ret < 0) {
+    if (ret != 0) {
         fprintf(stderr, "fsp_walk failed!\n");
         return 1;
     }
