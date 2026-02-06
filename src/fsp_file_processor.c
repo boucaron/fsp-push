@@ -66,21 +66,22 @@ static int fsp_compute_small_file(const char *path,
             break; // EOF
         }
 
-        // Kernel-level pipe write (handles backpressure)
-        size_t off = 0;
-        while (off < n) {
-            ssize_t w = write(out_fd, buf + off, n - off);
-            if (w < 0) {
-                perror("write");
-                fclose(fp);
-                EVP_MD_CTX_free(file_ctx);
-                return -1;
-            }
-            off += (size_t)w;
+        if (EVP_DigestUpdate(file_ctx, buf, n) != 1) {
+            fprintf(stderr, "EVP_DigestUpdate failed\n");
+            fclose(fp);
+            EVP_MD_CTX_free(file_ctx);
+            return -1;
         }
-
-        // Hash exactly what was sent
-        EVP_DigestUpdate(file_ctx, buf, n);
+        
+        // Push into big protocol buffer (handles aggregation + flushing)
+        if (fsp_bw_push(&state->protowritebuf, buf, n) < 0) {
+            fprintf(stderr, "fsp_bw_push failed\n");
+            fclose(fp);
+            EVP_MD_CTX_free(file_ctx);
+            return -1;
+        }
+        
+                
     }
 
     // Store final hash
@@ -178,21 +179,24 @@ static int fsp_compute_big_file(const char *path,
                 break;
             }
 
-            // Write to stdout (kernel-level, pipe safe)
-            size_t off = 0;
-            while (off < n) {
-                ssize_t w = write(out_fd, buf + off, n - off);
-                if (w < 0) {
-                    perror("write");
-                    fclose(fp);
-                    EVP_MD_CTX_free(chunk_ctx);
-                    EVP_MD_CTX_free(merkle_ctx);
-                    return -1;
-                }
-                off += (size_t)w;
+            // Update SHA256 for this chunk
+            if (EVP_DigestUpdate(chunk_ctx, buf, n) != 1) {
+                fprintf(stderr, "EVP_DigestUpdate failed\n");
+                fclose(fp);
+                EVP_MD_CTX_free(chunk_ctx);
+                EVP_MD_CTX_free(merkle_ctx);
+                return -1;
             }
 
-            EVP_DigestUpdate(chunk_ctx, buf, n);
+            // Push to big output buffer (handles aggregation + flushing)
+            if (fsp_bw_push(&state->protowritebuf, buf, n) < 0) {
+                fprintf(stderr, "fsp_bw_push failed\n");
+                fclose(fp);
+                EVP_MD_CTX_free(chunk_ctx);
+                EVP_MD_CTX_free(merkle_ctx);
+                return -1;
+            }
+           
             processed += n;
         }
 
@@ -397,6 +401,11 @@ int fsp_file_processor_process_directory(fsp_walker_state_t *state)
             // fsp_print_sha256(f->file_hash);
             // fprintf(stderr,")\n");
         }
+        ret = fsp_bw_flush(&state->protowritebuf);
+        if ( ret < 0 ) { 
+            return ret; 
+        }
+
 
         // --- Phase 3: Send metadata with hashes ---
         // --- Send FILES: <count>\n header ---
