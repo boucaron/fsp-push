@@ -50,23 +50,25 @@ int fsp_walk(const char *root_path,
 
     // First, always perform DRY_RUN
     state->mode = FSP_WALK_MODE_DRY_RUN;
-    double t0 = fsp_now_sec();
+    double t0 = fsp_now_msec();
     int ret = fsp_walk_dir_recursive(abs_root, cbs, state);
     if (ret < 0) return ret;
-    double t1 = fsp_now_sec();
-    state->dry_run->filesystem_traversal_time = t1 - t0;
-    fsp_dry_run_compute_simulation_metrics(state->dry_run);
+    double t1 = fsp_now_msec();
+    state->dry_run->filesystem_traversal_time = (t1 - t0)/1000.0;
+    fsp_dry_run_compute_simulation_metrics(state->dry_run);    
     fsp_dry_run_report(state->dry_run);
 
     // Now perform real run if requested
     if (mode == FSP_WALK_MODE_RUN) {
         state->mode = mode;
-        double t0 = fsp_now_sec();
+        double t0 = fsp_now_msec();
         int ret = fsp_walk_dir_recursive(abs_root, cbs, state);
         if (ret < 0) return ret;
-        double t1 = fsp_now_sec();
-        
-        // fsp_dry_run_report(state->dry_run);
+        double t1 = fsp_now_msec();
+        state->dry_run->observed_data_time = (t1 - t0)/1000.0;        
+        fsp_dry_run_compute_simulation_metrics(state->dry_run);
+        fsp_dry_run_compute_observed_metrics(state->dry_run);
+        fsp_dry_run_report(state->dry_run);
     }
 
     return 0;
@@ -185,12 +187,14 @@ int fsp_walk_dir_recursive(const char *root_path,
     }
 
     // --- Call file batching callback for this directory ---
-    if (cbs && cbs->process_directory) {
-        int ret = cbs->process_directory(state);
-        if (ret != 0) {
-            free(dir_array);
-            closedir(dir);
-            return ret;
+    if ( state->mode == FSP_WALK_MODE_RUN ) {
+        if (cbs && cbs->process_directory) {
+            int ret = cbs->process_directory(state);
+            if (ret != 0) {
+                free(dir_array);
+                closedir(dir);
+                return ret;
+            }
         }
     }
 

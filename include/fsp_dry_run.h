@@ -22,10 +22,9 @@ typedef struct {
 
     uint64_t protocol_total_size;
     double simulation_data_time;
-    double simulation_protocol_time;
-
+  
     double observed_data_time;
-    double observed_protocol_time;
+  
 
 
     // File stats part
@@ -35,9 +34,6 @@ typedef struct {
     uint64_t file_total_size; // total bytes across all files
 
     double filesystem_traversal_time; // total time traversing directories and reading list of files in seconds
-
-    double hashing_time; // total hashing time in milli seconds
-    double hashing_throughput; // in MB/s
 
     // Exponential file size distribution (×4 growth, capped at 100 GB) @see size_to_bucket
     uint64_t size_buckets[FS_SIZE_BUCKETS];
@@ -93,14 +89,6 @@ static inline void fsp_dry_run_add_file(fsp_dry_run_stats *s, uint64_t size)
         s->size_buckets[bucket]++;
 }
 
-/* Add hashing time (milli seconds) and optionally recalc throughput in MB/s */
-static inline void fsp_dry_run_add_hashing(fsp_dry_run_stats *s, double millseconds, uint64_t hashed_bytes)
-{
-    if (!s) return;
-    s->hashing_time += millseconds;
-    if (millseconds > 0)
-        s->hashing_throughput = (double)hashed_bytes / (1024.0 * 1024.0) / (millseconds / 1000.0);
-}
 
 /* Add a protocol call to filelist */
 static inline void fsp_dry_run_add_protocol_call(fsp_dry_run_stats *s, uint64_t size) {
@@ -144,12 +132,17 @@ fsp_dry_run_compute_simulation_metrics(fsp_dry_run_stats *s)
     // Compute simulation data time: total_size / throughput
     if (s->simulation_cfg.throughput > 0.0) {
         s->simulation_data_time = (double)s->file_total_size / s->simulation_cfg.throughput;
-        s->simulation_protocol_time = (double) s->protocol_total_size / s->simulation_cfg.throughput;
     } else {
         s->simulation_data_time = 0.0;
-        s->simulation_protocol_time = 0.0;
     }
         
+}
+static inline void 
+fsp_dry_run_compute_observed_metrics(fsp_dry_run_stats *s)
+{
+    if ( s->observed_data_time > 0.0 ) {
+        s->observed_perf.throughput = (double)s->file_total_size / s->observed_data_time;
+    }
 }
 
 
@@ -206,17 +199,6 @@ fsp_dry_run_report(fsp_dry_run_stats *s)
     fprintf(stderr, "  Directories : %" PRIu64 "\n", s->dir_count);
     fprintf(stderr, "  Files       : %" PRIu64 "\n", s->file_count);
     fprintf(stderr, "  Total size  : %s\n", buf);
-
-    fprintf(stderr, "\n");
-
-    /* Hashing */
-    fprintf(stderr, "Hashing:\n");
-    s->hashing_throughput = 0.0;    
-    fsp_dry_run_add_hashing(s, 0.1, s->file_total_size);
-    fsp_print_time(s->hashing_time/1000.0, buf, sizeof(buf));      
-    fprintf(stderr, "  Time       : %s\n", buf);
-
-    fprintf(stderr, "  Throughput : %.2f MB/s\n", s->hashing_throughput);
 
     fprintf(stderr, "\n");
 
@@ -294,21 +276,15 @@ fsp_dry_run_report(fsp_dry_run_stats *s)
     fprintf(stderr, "    RTT                          : %7.3f ms\n", s->simulation_cfg.latencyRtt);
     fsp_print_time( s->simulation_data_time, buf, sizeof(buf));      
     fprintf(stderr, "    Data time                    : %s\n", buf);
-    fsp_print_time( s->simulation_protocol_time, buf, sizeof(buf));      
-    fprintf(stderr, "    Protocol time                : %s\n", buf);
-
+   
     /* Observed */
     fprintf(stderr, "  Observed:\n");
     fprintf(stderr, "    Throughput                   : %8.2f MB/s\n", s->observed_perf.throughput / (1024.0 * 1024.0));
     fprintf(stderr, "    RTT                          : %7.3f ms\n", s->observed_perf.latencyRtt);
     fsp_print_time( s->observed_data_time, buf, sizeof(buf));      
     fprintf(stderr, "    Data time                    : %s\n", buf);
-    fsp_print_time( s->observed_protocol_time, buf, sizeof(buf));      
-    fprintf(stderr, "    Protocol time                : %s\n", buf);
     fsp_print_time( s->filesystem_traversal_time, buf, sizeof(buf));      
     fprintf(stderr, "    Filesystem Traversal Time    : %s\n", buf);    
-    fsp_print_time( s->hashing_time / 1000.0, buf, sizeof(buf));      
-    fprintf(stderr, "    Hashing Time                 : %s\n", buf);
     fprintf(stderr, "\n");
 
 

@@ -38,9 +38,7 @@ int main(void)
     stats.file_count = 4;
     stats.file_total_size = 1024 + 5 * 1024 + 20 * 1024 + 2 * 1024 * 1024; // 2 MB+small files
     stats.protocol_total_size = 10 * 768; // Just to have a number
-    stats.hashing_time = 0.2;
-    stats.hashing_throughput = 10.0;
-
+  
    // Update buckets
     stats.size_buckets[fsp_size_to_bucket(1024)]++;
     stats.size_buckets[fsp_size_to_bucket(5 * 1024)]++;

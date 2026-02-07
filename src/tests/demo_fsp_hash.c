@@ -86,17 +86,15 @@ int main(int argc, char **argv) {
 
     fprintf(stderr, "Starting DRY_RUN on: %s\n", root_path);
 
-    int ret = fsp_walk(root_path, &cbs, &state, FSP_WALK_MODE_DRY_RUN);
+    int ret = fsp_walk(root_path, &cbs, &state, FSP_WALK_MODE_RUN);
     if (ret != 0) {
         fprintf(stderr, "fsp_walk failed!\n");
         return 1;
     }
 
-    fprintf(stderr, "\nDry-run completed. Summary:\n");
-    fsp_dry_run_report(&dry_run_stats);
-
     // Cleanup allocated memory
     fsp_dir_entries_free(&state.entries);
+    // TODO: cleanup other buffers
 
     return 0;
 }
