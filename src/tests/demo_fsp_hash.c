@@ -57,6 +57,9 @@ int main(int argc, char **argv) {
     state.max_files  = FSP_MAX_FILES_PER_LIST;
     state.max_bytes  = FSP_MAX_FILE_LIST_BYTES;
     state.mode       = FSP_WALK_MODE_DRY_RUN;
+    state.total_files = 0;
+    state.total_bytes = 0;
+    state.previous_total_bytes = 0;
     state.user_data  = &state;
 
     // Allocate file buffer for hashing

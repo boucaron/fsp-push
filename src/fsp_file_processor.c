@@ -9,6 +9,36 @@
 
 
 
+void fsp_file_processor_progressbar(fsp_walker_state_t *state) {
+
+    int cond0 = !(state->total_files % 100 == 0);
+    int cond1 =  (state->previous_total_bytes + (1024 * 1024 * 128)) < state->total_bytes;
+    if ( cond0 && !cond1 ) {
+        return ;
+    }
+    if ( cond1 ) {
+        state->previous_total_bytes = state->total_bytes;
+    }
+
+
+    int bar_width = 40;
+
+    // Reset the bar
+    fprintf(stderr, "\r\033[2K");
+    fprintf(stderr, "====================================================================");
+
+    fprintf(stderr, "\r\033[2K");
+    // Display
+    char buf[64], buf1[64];
+    fsp_print_size(state->dry_run->file_total_size, buf, sizeof(buf));
+    fsp_print_size(state->total_bytes, buf1, sizeof(buf1));
+    fprintf(stderr, "Progress: Sent Files: %" PRIu64 "/%" PRIu64 " - Data : %s/%s", 
+            state->total_files, state->dry_run->file_count,
+            buf, buf1);
+    fflush(stderr);
+}
+
+
 /*
  * Small file no chunk
  * 
@@ -51,8 +81,7 @@ static int fsp_compute_small_file(const char *path,
     }
 
     uint8_t *buf = state->file_buf;
-    size_t buf_size = state->file_buf_size;
-    int out_fd = fileno(stdout);
+    size_t buf_size = state->file_buf_size;    
 
     for (;;) {
         size_t n = fread(buf, 1, buf_size, fp);
@@ -65,6 +94,8 @@ static int fsp_compute_small_file(const char *path,
             }
             break; // EOF
         }
+
+        state->total_bytes += n;
 
         if (EVP_DigestUpdate(file_ctx, buf, n) != 1) {
             fprintf(stderr, "EVP_DigestUpdate failed\n");
@@ -152,8 +183,7 @@ static int fsp_compute_big_file(const char *path,
     EVP_DigestInit_ex(merkle_ctx, EVP_sha256(), NULL);
 
     uint8_t *buf = state->file_buf;
-    size_t buf_size = state->file_buf_size;
-    int out_fd = fileno(stdout);
+    size_t buf_size = state->file_buf_size;    
     uint64_t remaining_bytes = entry->size;
 
     while (remaining_bytes > 0) {
@@ -178,6 +208,8 @@ static int fsp_compute_big_file(const char *path,
                 }
                 break;
             }
+
+            state->total_bytes += n;
 
             // Update SHA256 for this chunk
             if (EVP_DigestUpdate(chunk_ctx, buf, n) != 1) {
@@ -247,11 +279,11 @@ fsp_compute_file_and_chunks(const char *path,
 /* =========================================================================
  * Debug helpers
  * ========================================================================= */
-static void fsp_print_sha256(const unsigned char hash[SHA256_DIGEST_LENGTH])
+/* static void fsp_print_sha256(const unsigned char hash[SHA256_DIGEST_LENGTH])
 {
     for (int i = 0; i < SHA256_DIGEST_LENGTH; i++)
         fprintf(stderr,"%02x", hash[i]);
-}
+} */
 
 /* =========================================================================
  * Public API
@@ -402,6 +434,12 @@ int fsp_file_processor_process_directory(fsp_walker_state_t *state)
             // fprintf(stderr,"  Sent: %s (SHA256: ", f->name);
             // fsp_print_sha256(f->file_hash);
             // fprintf(stderr,")\n");
+
+            state->total_files++;
+
+            // DEBUG
+            fsp_file_processor_progressbar(state);
+
         }
         ret = fsp_bw_flush(&state->protowritebuf);
         if ( ret < 0 ) { 

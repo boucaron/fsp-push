@@ -14,13 +14,14 @@
 
 static struct option long_opts[] = {
     { "mode", required_argument, 0, 'm' },
+    { "dry-run", no_argument, 0, 'd'},
     { 0, 0, 0, 0 }
 };
 
 
 static void usage(const char *prog) {
     fprintf(stderr,
-        "usage: %s [--mode MODE] <source-path>\n"
+        "usage: %s [--mode MODE] [--dry-run] <source-path>\n"
         "\n"
         "Modes:\n"
         "  overwrite   Always overwrite existing files (default)\n"
@@ -99,18 +100,24 @@ static int check_source_dir(const char *path) {
 /* --- main --- */
 
 int main(int argc, char **argv) {
-    fsp_mode_t cli_mode = FSP_OVERWRITE_ALWAYS;    
+    fsp_mode_t cli_mode = FSP_OVERWRITE_ALWAYS;  
+    int dry_run = 0;  
 
     int opt;
-    while ((opt = getopt_long(argc, argv, "m:", long_opts, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "m:d", long_opts, NULL)) != -1) {
         switch (opt) {
         case 'm':
             if (fsp_parse_mode(optarg, &cli_mode) != 0) {
                 fprintf(stderr, "Invalid mode: %s\n", optarg);
                 usage(argv[0]);
                 return 1;
-            }           
+            }
             break;
+
+        case 'd':
+            dry_run = 1;
+            break;
+
         default:
             usage(argv[0]);
             return 1;
