@@ -98,6 +98,12 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    // --- End of directory transaction ---
+    const char *end_line = "END\n";
+    fsp_bw_push(&state.protowritebuf, end_line, strlen(end_line));
+    fsp_bw_flush(&state.protowritebuf);
+
+
     // Cleanup allocated memory
     fsp_dir_entries_free(&state.entries);
     // TODO: cleanup other buffers
