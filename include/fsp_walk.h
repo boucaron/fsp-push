@@ -6,6 +6,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <stdbool.h>
+#include <time.h>
 #include <openssl/sha.h>  // OpenSSL for SHA256
 
 #include "fsp.h"
@@ -113,6 +114,9 @@ typedef struct fsp_walker_state {
     uint64_t total_files;
     uint64_t total_bytes;
     uint64_t previous_total_bytes; // used for progress bar
+    struct timespec last_speed_ts; // used for progress bar
+    uint64_t        last_speed_bytes; // used for progress baar
+    double          last_throughput;   // used for progress bar : bytes / second 
 
 } fsp_walker_state_t;
 

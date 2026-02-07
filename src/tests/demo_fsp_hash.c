@@ -60,6 +60,9 @@ int main(int argc, char **argv) {
     state.total_files = 0;
     state.total_bytes = 0;
     state.previous_total_bytes = 0;
+    clock_gettime(CLOCK_MONOTONIC, &state.last_speed_ts);
+    state.last_speed_bytes = 0;
+    state.last_throughput = 0; 
     state.user_data  = &state;
 
     // Allocate file buffer for hashing

@@ -5,7 +5,17 @@
 #include <stdio.h>
 #include <errno.h>
 #include <unistd.h>
+#include <time.h>
 #include <openssl/evp.h>
+
+
+
+static inline double
+timespec_diff_sec(struct timespec a, struct timespec b)
+{
+    return (double)(a.tv_sec - b.tv_sec) +
+           (double)(a.tv_nsec - b.tv_nsec) * 1e-9;
+}
 
 
 #define ANSI_RESET   "\033[0m"
@@ -14,22 +24,39 @@
 #define ANSI_GREEN   "\033[32m"
 #define ANSI_YELLOW  "\033[33m"
 #define ANSI_CYAN    "\033[36m"
+#define ANSI_MAGENTA "\033[35m"
 
 void fsp_file_processor_progressbar(fsp_walker_state_t *state) {
 
      /* Throttle updates:
        - every 100 files
        - or every 128 MB */
-
     int files_trigger = (state->total_files % 100) == 0;
     int bytes_trigger =
-        state->total_bytes >= state->previous_total_bytes + (128ULL << 20);
+        state->total_bytes >= state->last_speed_bytes + (128ULL << 20);
 
     if (!files_trigger && !bytes_trigger)
         return;
 
-    if (bytes_trigger)
-        state->previous_total_bytes = state->total_bytes;
+    /* --- Update throughput ONLY on byte trigger --- */
+    if (bytes_trigger) {
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+
+        uint64_t delta_bytes =
+            state->total_bytes - state->last_speed_bytes;
+
+        double delta_time =
+            timespec_diff_sec(now, state->last_speed_ts);
+
+        if (delta_time > 0.0)
+            state->last_throughput = delta_bytes / delta_time;
+
+        state->last_speed_bytes = state->total_bytes;
+        state->last_speed_ts = now;
+    }
+
+    /* --- Formatting --- */
 
     char total_buf[64], sent_buf[64];
     fsp_print_size(state->dry_run->file_total_size,
@@ -48,6 +75,16 @@ void fsp_file_processor_progressbar(fsp_walker_state_t *state) {
         sent_buf,
         total_buf
     );
+
+    /* --- Display last known speed --- */
+    if (state->last_throughput > 0.0) {
+        char speed_buf[32];
+        fsp_print_size((uint64_t)state->last_throughput,
+                       speed_buf, sizeof(speed_buf));
+       fprintf(stderr,
+            "  Speed " ANSI_MAGENTA "%s/s" ANSI_RESET,
+            speed_buf);
+    }
 
     fflush(stderr);
 }
