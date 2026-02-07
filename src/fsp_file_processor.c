@@ -11,30 +11,36 @@
 
 void fsp_file_processor_progressbar(fsp_walker_state_t *state) {
 
-    int cond0 = !(state->total_files % 100 == 0);
-    int cond1 =  (state->previous_total_bytes + (1024 * 1024 * 128)) < state->total_bytes;
-    if ( cond0 && !cond1 ) {
-        return ;
-    }
-    if ( cond1 ) {
+    /* Throttle updates:
+       - every 100 files
+       - or every 128 MB */
+    int files_trigger = (state->total_files % 100) == 0;
+    int bytes_trigger =
+        state->total_bytes >= state->previous_total_bytes + (128ULL << 20);
+
+    if (!files_trigger && !bytes_trigger)
+        return;
+
+    if (bytes_trigger)
         state->previous_total_bytes = state->total_bytes;
-    }
 
+    /* Format sizes */
+    char total_buf[64], sent_buf[64];
+    fsp_print_size(state->dry_run->file_total_size,
+                   total_buf, sizeof(total_buf));
+    fsp_print_size(state->total_bytes,
+                   sent_buf, sizeof(sent_buf));
 
-    int bar_width = 40;
-
-    // Reset the bar
+    /* Clear line and redraw */
     fprintf(stderr, "\r\033[2K");
-    fprintf(stderr, "====================================================================");
+    fprintf(stderr,
+            "Progress: Files %"
+            PRIu64 "/%" PRIu64 "  Data %s/%s",
+            state->total_files,
+            state->dry_run->file_count,
+            sent_buf,
+            total_buf);
 
-    fprintf(stderr, "\r\033[2K");
-    // Display
-    char buf[64], buf1[64];
-    fsp_print_size(state->dry_run->file_total_size, buf, sizeof(buf));
-    fsp_print_size(state->total_bytes, buf1, sizeof(buf1));
-    fprintf(stderr, "Progress: Sent Files: %" PRIu64 "/%" PRIu64 " - Data : %s/%s", 
-            state->total_files, state->dry_run->file_count,
-            buf, buf1);
     fflush(stderr);
 }
 
