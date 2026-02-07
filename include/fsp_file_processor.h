@@ -7,6 +7,10 @@
 #include "fsp_walk.h"
 #include "fsp.h"
 
+
+
+void fsp_file_processor_progressbar(fsp_walker_state_t *state);
+
 /* =========================================================================
  * Directory Processor Interface
  * ========================================================================= */

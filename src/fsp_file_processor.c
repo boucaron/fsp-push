@@ -8,12 +8,19 @@
 #include <openssl/evp.h>
 
 
+#define ANSI_RESET   "\033[0m"
+#define ANSI_BOLD    "\033[1m"
+
+#define ANSI_GREEN   "\033[32m"
+#define ANSI_YELLOW  "\033[33m"
+#define ANSI_CYAN    "\033[36m"
 
 void fsp_file_processor_progressbar(fsp_walker_state_t *state) {
 
-    /* Throttle updates:
+     /* Throttle updates:
        - every 100 files
        - or every 128 MB */
+
     int files_trigger = (state->total_files % 100) == 0;
     int bytes_trigger =
         state->total_bytes >= state->previous_total_bytes + (128ULL << 20);
@@ -24,22 +31,23 @@ void fsp_file_processor_progressbar(fsp_walker_state_t *state) {
     if (bytes_trigger)
         state->previous_total_bytes = state->total_bytes;
 
-    /* Format sizes */
     char total_buf[64], sent_buf[64];
     fsp_print_size(state->dry_run->file_total_size,
                    total_buf, sizeof(total_buf));
     fsp_print_size(state->total_bytes,
                    sent_buf, sizeof(sent_buf));
 
-    /* Clear line and redraw */
     fprintf(stderr, "\r\033[2K");
+
     fprintf(stderr,
-            "Progress: Files %"
-            PRIu64 "/%" PRIu64 "  Data %s/%s",
-            state->total_files,
-            state->dry_run->file_count,
-            sent_buf,
-            total_buf);
+        ANSI_BOLD "Progress:" ANSI_RESET " "
+        "Files " ANSI_CYAN "%" PRIu64 "/%" PRIu64 ANSI_RESET "  "
+        "Data " ANSI_GREEN "%s/%s" ANSI_RESET,
+        state->total_files,
+        state->dry_run->file_count,
+        sent_buf,
+        total_buf
+    );
 
     fflush(stderr);
 }

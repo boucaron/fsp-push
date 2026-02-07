@@ -109,6 +109,11 @@ typedef struct fsp_walker_state {
 
     fsp_buf_writer_t protowritebuf; // Buffer to write for the protocol    
 
+    // Stats accross all runs
+    uint64_t total_files;
+    uint64_t total_bytes;
+    uint64_t previous_total_bytes; // used for progress bar
+
 } fsp_walker_state_t;
 
 

@@ -185,6 +185,7 @@ fsp_print_time (double seconds, char *buf, size_t buflen)
              days, hours, minutes, s);
 }
 
+
 static void
 fsp_dry_run_report(fsp_dry_run_stats *s, char* custom)
 {
