@@ -26,6 +26,7 @@ timespec_diff_sec(struct timespec a, struct timespec b)
 #define ANSI_CYAN    "\033[36m"
 #define ANSI_MAGENTA "\033[35m"
 
+
 void fsp_file_processor_progressbar(fsp_walker_state_t *state) {
 
      /* Throttle updates:
@@ -84,6 +85,19 @@ void fsp_file_processor_progressbar(fsp_walker_state_t *state) {
        fprintf(stderr,
             "  Speed " ANSI_MAGENTA "%s/s" ANSI_RESET,
             speed_buf);
+
+
+        /* ETA */
+        uint64_t remaining_bytes = state->dry_run->file_total_size - state->total_bytes;
+        double eta_sec = (double)remaining_bytes / state->last_throughput;
+
+        int hours   = (int)(eta_sec / 3600);
+        int minutes = (int)((eta_sec - hours * 3600) / 60);
+        int seconds = (int)(eta_sec - hours * 3600 - minutes * 60);
+
+        fprintf(stderr,
+                "  ETA " ANSI_YELLOW "%02d:%02d:%02d" ANSI_RESET,
+                hours, minutes, seconds);     
     }
 
     fflush(stderr);
