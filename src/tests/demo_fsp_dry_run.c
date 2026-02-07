@@ -77,7 +77,7 @@ int main(void)
 
     // Full report with ASCII bars
     printf("\nFull ASCII report:\n");
-    fsp_dry_run_report(&stats);
+    fsp_dry_run_report(&stats, NULL);
 
     return 0;
 }

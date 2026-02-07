@@ -56,7 +56,7 @@ int fsp_walk(const char *root_path,
     double t1 = fsp_now_msec();
     state->dry_run->filesystem_traversal_time = (t1 - t0)/1000.0;
     fsp_dry_run_compute_simulation_metrics(state->dry_run);    
-    fsp_dry_run_report(state->dry_run);
+    fsp_dry_run_report(state->dry_run, NULL);
 
     // Now perform real run if requested
     if (mode == FSP_WALK_MODE_RUN) {
@@ -68,7 +68,7 @@ int fsp_walk(const char *root_path,
         state->dry_run->observed_data_time = (t1 - t0)/1000.0;        
         fsp_dry_run_compute_simulation_metrics(state->dry_run);
         fsp_dry_run_compute_observed_metrics(state->dry_run);
-        fsp_dry_run_report(state->dry_run);
+        fsp_dry_run_report(state->dry_run, "=== FSP Run Report ===");
     }
 
     return 0;

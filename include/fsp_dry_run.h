@@ -186,11 +186,15 @@ fsp_print_time (double seconds, char *buf, size_t buflen)
 }
 
 static void
-fsp_dry_run_report(fsp_dry_run_stats *s)
+fsp_dry_run_report(fsp_dry_run_stats *s, char* custom)
 {
     char buf[64];
 
-    fprintf(stderr, "\n=== FSP Dry Run Report ===\n\n");
+    if ( custom == NULL ) {
+        fprintf(stderr, "\n=== FSP Dry Run Report ===\n\n");
+    } else {
+        fprintf(stderr, "\n%s\n\n", custom);
+    }
 
   
     /* Filesystem shape */
@@ -272,15 +276,13 @@ fsp_dry_run_report(fsp_dry_run_stats *s)
     fprintf(stderr, "    Protocol data size           : %s\n", buf); 
     /* Simulation */
     fprintf(stderr, "  Simulation:\n");
-    fprintf(stderr, "    Throughput                   : %8.2f MB/s\n", s->simulation_cfg.throughput / (1024.0 * 1024.0));
-    fprintf(stderr, "    RTT                          : %7.3f ms\n", s->simulation_cfg.latencyRtt);
+    fprintf(stderr, "    Throughput                   : %8.2f MB/s\n", s->simulation_cfg.throughput / (1024.0 * 1024.0));    
     fsp_print_time( s->simulation_data_time, buf, sizeof(buf));      
     fprintf(stderr, "    Data time                    : %s\n", buf);
    
     /* Observed */
     fprintf(stderr, "  Observed:\n");
-    fprintf(stderr, "    Throughput                   : %8.2f MB/s\n", s->observed_perf.throughput / (1024.0 * 1024.0));
-    fprintf(stderr, "    RTT                          : %7.3f ms\n", s->observed_perf.latencyRtt);
+    fprintf(stderr, "    Throughput                   : %8.2f MB/s\n", s->observed_perf.throughput / (1024.0 * 1024.0));    
     fsp_print_time( s->observed_data_time, buf, sizeof(buf));      
     fprintf(stderr, "    Data time                    : %s\n", buf);
     fsp_print_time( s->filesystem_traversal_time, buf, sizeof(buf));      

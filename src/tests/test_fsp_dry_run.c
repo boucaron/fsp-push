@@ -68,7 +68,7 @@ int main(void)
     /* Optional: print report to visually inspect */
     /* ------------------ */
     fsp_dry_run_compute_simulation_metrics(&stats);
-    fsp_dry_run_report(&stats);
+    fsp_dry_run_report(&stats, NULL);
 
     return 0;
 }

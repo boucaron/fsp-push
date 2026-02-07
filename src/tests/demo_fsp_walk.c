@@ -83,7 +83,7 @@ int main(int argc, char **argv) {
     }
 
     printf("\nDry-run completed. Summary:\n");
-    fsp_dry_run_report(&dry_run_stats);
+    fsp_dry_run_report(&dry_run_stats, NULL);
 
     // Cleanup allocated memory
     fsp_dir_entries_free(&state.entries);
