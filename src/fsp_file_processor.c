@@ -308,17 +308,14 @@ int fsp_file_processor_process_directory(fsp_walker_state_t *state)
     if (na < 0 || (size_t)na >= sizeof(dir_line)) {
         fprintf(stderr, "fsp_send_directory: snprintf error\n");
         return -1;
+    }        
+    int ret = fsp_bw_push(&state->protowritebuf, dir_line, na);
+    if ( ret < 0 ) {
+        return ret;
     }
-
-    size_t off = 0;
-    int out_fd = fileno(stdout);
-    while (off < (size_t)na) {
-        ssize_t w = write(out_fd, dir_line + off, (size_t)na - off);
-        if (w < 0) {
-            perror("write");
-            return -1;
-        }
-        off += (size_t)w;
+    ret = fsp_bw_flush(&state->protowritebuf);
+    if (ret < 0) {
+        return ret;
     }
 
     while (file_index < total_files) {
@@ -343,26 +340,31 @@ int fsp_file_processor_process_directory(fsp_walker_state_t *state)
         // --- Phase 1: Send metadata (sizes) ---
         // Send FILE_LIST header ---
         const char *header = "FILE_LIST\n";
-        size_t header_len = strlen(header);
-        off = 0;
-        while (off < header_len) {
-            ssize_t w = write(out_fd, header + off, header_len - off);
-            if (w < 0) { perror("write"); return -1; }
-            off += (size_t)w;
+        size_t header_len = strlen(header);        
+        ret = fsp_bw_push(&state->protowritebuf, header, header_len);
+        if ( ret < 0 ) {
+            return ret;
         }
+        ret = fsp_bw_flush(&state->protowritebuf);
+        if (ret < 0) {
+            return ret;
+        }
+
         // --- Send FILES: <count>\n header ---
         char files_line[64];
         int n = snprintf(files_line, sizeof(files_line), "FILES: %zu\n", batch_files);
         if (n < 0 || (size_t)n >= sizeof(files_line)) {
             fprintf(stderr, "fsp_send_file_list_batch: snprintf error\n");
             return -1;
+        }      
+        ret =  fsp_bw_push(&state->protowritebuf, files_line, n);
+        if ( ret < 0 ) {
+            return ret;
         }
-        off = 0;
-        while (off < (size_t)n) {
-            ssize_t w = write(out_fd, files_line + off, (size_t)n - off);
-            if (w < 0) { perror("write"); return -1; }
-            off += (size_t)w;
-        }    
+        ret = fsp_bw_flush(&state->protowritebuf);
+        if (ret < 0) {
+            return ret;
+        }
 
         // fprintf(stderr, "\n[PHASE 1] Sending metadata for batch starting at file %zu\n", file_index);                
         for (size_t i = 0; i < batch_files; i++) {
@@ -375,7 +377,7 @@ int fsp_file_processor_process_directory(fsp_walker_state_t *state)
                 return ret;
             }
         }
-        int ret = fsp_bw_flush(&state->protowritebuf);
+        ret = fsp_bw_flush(&state->protowritebuf);
         if ( ret < 0 ) { 
             return ret; 
         }
@@ -414,13 +416,16 @@ int fsp_file_processor_process_directory(fsp_walker_state_t *state)
         if (nn < 0 || (size_t)nn >= sizeof(hfiles_line)) {
             fprintf(stderr, "fsp_send_file_list_batch: snprintf error\n");
             return -1;
+        }        
+        ret =  fsp_bw_push(&state->protowritebuf, hfiles_line, nn);
+        if ( ret < 0 ) {
+            return ret;
         }
-        off = 0;
-        while (off < (size_t)nn) {
-            ssize_t w = write(out_fd, hfiles_line + off, (size_t)nn - off);
-            if (w < 0) { perror("write"); return -1; }
-            off += (size_t)w;
+        ret = fsp_bw_flush(&state->protowritebuf);
+        if (ret < 0) {
+            return ret;
         }
+
         // fprintf(stderr, "[PHASE 3] Sending metadata with hashes...\n");
         for (size_t i = 0; i < batch_files; i++) {
             fsp_file_entry_t *f = &entries->files[file_index + i];

@@ -107,7 +107,7 @@ typedef struct fsp_walker_state {
     uint8_t *file_buf;    // Shared buffer for file reading & hashing
     size_t   file_buf_size;
 
-    fsp_buf_writer_t protowritebuf; // Buffer to write for the protocol
+    fsp_buf_writer_t protowritebuf; // Buffer to write for the protocol    
 
 } fsp_walker_state_t;
 
