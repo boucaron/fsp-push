@@ -5,7 +5,7 @@
 #define FSP_MAGIC   0x46535031  // "FSP1"
 #define FSP_VERSION 2
 
-// Commands
+// Commands: TODO REMOVE
 #define FSP_CMD_MKDIR     0x01
 #define FSP_CMD_FILE_LIST 0x02
 #define FSP_CMD_SET_MODE  0x10

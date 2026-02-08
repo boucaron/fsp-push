@@ -6,6 +6,8 @@
 #include <errno.h>
 #include <unistd.h>
 #include <time.h>
+
+#include <arpa/inet.h> 
 #include <openssl/evp.h>
 
 
@@ -370,13 +372,19 @@ static int fsp_send_file_entry_buf(fsp_buf_writer_t *bw,
 #endif
 
     // Push fixed-size fields into the buffer
-    if (fsp_bw_push(bw, entry->name, sizeof(entry->name)) < 0) return -1;
-    if (fsp_bw_push(bw, &entry->size, sizeof(entry->size)) < 0) return -1;
+    uint16_t name_len = (uint16_t)strnlen(entry->name, NAME_MAX);
+    if (fsp_bw_push(bw, &name_len, sizeof(name_len)) < 0) return -1; // Send name size
+    if (fsp_bw_push(bw, entry->name, name_len) < 0) return -1;
+
+    uint64_t size_be = htobe64(entry->size);
+    if (fsp_bw_push(bw, &size_be, sizeof(size_be)) < 0) return -1; // Send filesize
     if (fsp_bw_push(bw, entry->file_hash, SHA256_DIGEST_LENGTH) < 0) return -1;
-    if (fsp_bw_push(bw, &entry->num_chunks, sizeof(entry->num_chunks)) < 0) return -1;
+
+    uint64_t num_chunks_be = htobe64(entry->num_chunks); // Send numchunks
+    if (fsp_bw_push(bw, &num_chunks_be, sizeof(num_chunks_be)) < 0) return -1;
 
     // Push dynamic chunk hashes, if present
-    if (entry->num_chunks > 0 && entry->chunk_hashes) {
+    if (entry->num_chunks > 0 && entry->chunk_hashes) {        
         size_t chunks_size = entry->num_chunks * SHA256_DIGEST_LENGTH;
         if (fsp_bw_push(bw, entry->chunk_hashes, chunks_size) < 0) return -1;
     }
