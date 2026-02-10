@@ -56,9 +56,22 @@ typedef struct fsp_receiver_state {
 // Line reading helper
 // -----------------------------------------------------------------------------
 static inline int fsp_rx_readline(FILE *fp, char *buf, size_t maxlen) {
-    if (!fgets(buf, (int)maxlen, fp)) return -1; // EOF or error
-    size_t len = strlen(buf);
-    if (len > 0 && buf[len - 1] == '\n') buf[len - 1] = '\0'; // strip newline
+    size_t i = 0;
+    int c;
+
+    if (maxlen == 0) return -1;
+
+    while (i + 1 < maxlen) {
+        c = fgetc(fp);
+        if (c == EOF) {
+            if (i == 0) return -1;
+            break;
+        }
+        if (c == '\n') break;
+        buf[i++] = (char)c;
+    }
+
+    buf[i] = '\0';
     return 0;
 }
 
