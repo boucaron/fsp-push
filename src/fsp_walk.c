@@ -62,6 +62,17 @@ int fsp_walk(const char *root_path,
     if (mode == FSP_WALK_MODE_RUN) {
         state->mode = mode;
         double t0 = fsp_now_msec();
+
+        const char *version = "VERSION: 0\n";
+        fsp_bw_push(&state->protowritebuf, version, strlen(version));
+        fsp_bw_flush(&state->protowritebuf);
+
+        const char *protomode = "MODE: overwrite\n";
+        fsp_bw_push(&state->protowritebuf, protomode, strlen(protomode));
+        fsp_bw_flush(&state->protowritebuf);
+
+
+
         int ret = fsp_walk_dir_recursive(abs_root, cbs, state);
         if (ret < 0) return ret;
         double t1 = fsp_now_msec();

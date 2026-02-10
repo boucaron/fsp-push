@@ -11,7 +11,7 @@
 // State handlers
 // -----------------------------------------------------------------------------
 static int fsp_rx_handle_version(fsp_receiver_state_t *rx, FILE *fp) {
-    char line[PATH_MAX + 128];
+    char line[64];
     if (fsp_rx_readline(fp, line, sizeof(line)) < 0) return -1;
 
     if (sscanf(line, "VERSION: %d", &rx->version) != 1) return -1;
