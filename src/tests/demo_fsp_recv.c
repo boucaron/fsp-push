@@ -1,4 +1,5 @@
 #include "../../include/fsp.h" 
+#include "../../include/fsp_io.h"
 #include "../../include/fsp_walk.h"
 #include "../../include/fsp_rx.h"
 
@@ -29,6 +30,14 @@ int main(int argc, char **argv) {
     if ( state.file_buf == NULL ) {
         return -1;
     }
+    state.entries = NULL;
+
+    state.target_path = fsp_normalize_path(root_path);
+    if (!state.target_path) {
+        free(state.file_buf);
+        return -1;
+    }
+
 
 #ifdef _WIN32
     _setmode(_fileno(stdin), _O_BINARY);

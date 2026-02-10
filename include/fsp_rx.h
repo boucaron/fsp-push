@@ -30,6 +30,7 @@ typedef enum {
 
 typedef struct fsp_receiver_state {
 
+    char *target_path; // target_path prefix
     char current_dir[PATH_MAX];      // Current directory from DIRECTORY: <path>
     
     // File entries for current batch

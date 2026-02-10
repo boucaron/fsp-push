@@ -2,6 +2,14 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdlib.h>
+#include <limits.h>
+#include <string.h>
+#include <stdio.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 /*
  * Low-level blocking I/O helpers.
@@ -26,3 +34,27 @@ uint32_t fsp_read_u32_be(int fd, int *err);
 int fsp_write_u16_be(int fd, uint16_t v);
 int fsp_write_u32_be(int fd, uint32_t v);
 int fsp_write_u64_be(int fd, uint64_t v);
+
+
+
+
+// Returns a newly allocated absolute path, caller must free()
+static char *fsp_normalize_path(const char *path) {
+    if (!path) return NULL;
+
+#ifdef _WIN32
+    char buf[MAX_PATH];
+    if (_fullpath(buf, path, MAX_PATH) == NULL) {
+        perror("normalize_path");
+        return NULL;
+    }
+#else
+    char buf[PATH_MAX];
+    if (realpath(path, buf) == NULL) {
+        perror("normalize_path");
+        return NULL;
+    }
+#endif
+
+    return strdup(buf); // caller frees
+}
