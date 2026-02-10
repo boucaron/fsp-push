@@ -49,7 +49,10 @@ static int fsp_rx_handle_idle(fsp_receiver_state_t *rx, FILE *fp) {
 
 
         // Create directory with default permissions (honoring umask)
-        if (mkdir(rx->current_dir, 0) < 0) {
+        char targetdir[PATH_MAX]; // Size not a problem
+        snprintf(targetdir, sizeof(targetdir), "%s/%s", rx->target_path, rx->current_dir);
+        targetdir[PATH_MAX-1] = '\0';
+        if (mkdir(targetdir, 0755) < 0) {
             if (errno != EEXIST) {
                 perror("mkdir");
                 return -1;
