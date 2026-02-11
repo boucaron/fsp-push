@@ -3,9 +3,10 @@
 #include "fsp_walk.h"
 #include "fsp_rx.h"
 
-
 #include <sys/stat.h>
 #include <errno.h>
+
+#include <openssl/evp.h>
 
 // -----------------------------------------------------------------------------
 // State handlers
@@ -49,7 +50,7 @@ static int fsp_rx_handle_idle(fsp_receiver_state_t *rx, FILE *fp) {
 
 
         // Create directory with default permissions (honoring umask)
-        char targetdir[PATH_MAX]; // Size not a problem
+        char targetdir[PATH_MAX+3];
         snprintf(targetdir, sizeof(targetdir), "%s/%s", rx->target_path, rx->current_dir);
         targetdir[PATH_MAX-1] = '\0';
         if (mkdir(targetdir, 0755) < 0) {
@@ -187,6 +188,72 @@ static int fsp_rx_handle_file_metadata(fsp_receiver_state_t *rx, FILE *fp) {
     return 0;
 }
 
+
+// The caller is responsible for closing the out file
+static int fsp_rx_handle_small_file(fsp_receiver_state_t *rx, fsp_file_entry_t *entry, FILE *fp, FILE *out) {
+
+    EVP_MD_CTX *file_ctx = EVP_MD_CTX_new();
+    if (!file_ctx) return -1;
+
+    if (EVP_DigestInit_ex(file_ctx, EVP_sha256(), NULL) != 1) {
+        EVP_MD_CTX_free(file_ctx);
+        return -1;
+    }
+
+    uint8_t *buf = rx->proto_buf;
+    size_t buf_size = rx->proto_buf_size;
+    size_t remaining = entry->size;
+
+    while (remaining > 0) {
+        size_t chunk = (remaining < buf_size) ? remaining : buf_size;
+        size_t n = fread(buf, 1, chunk, fp);
+        if (n == 0) {
+            if (ferror(fp)) {
+                perror("fread");
+                EVP_MD_CTX_free(file_ctx);
+                return -1;
+            }
+            fprintf(stderr, "Unexpected EOF while reading small file\n");
+            EVP_MD_CTX_free(file_ctx);
+            return -1;
+        }
+
+        rx->total_bytes += n;
+        remaining -= n;
+
+        if (EVP_DigestUpdate(file_ctx, buf, n) != 1) {
+            fprintf(stderr, "EVP_DigestUpdate failed\n");
+            EVP_MD_CTX_free(file_ctx);
+            return -1;
+        }
+
+        size_t w = fwrite(buf, 1, n, out);
+        if (w != n) {
+            perror("fwrite");
+            EVP_MD_CTX_free(file_ctx);
+            return -1;
+        }
+    }
+
+    // Store final SHA256 hash
+    if (EVP_DigestFinal_ex(file_ctx, entry->file_hash, NULL) != 1) {
+        fprintf(stderr, "EVP_DigestFinal_ex failed\n");
+        EVP_MD_CTX_free(file_ctx);
+        return -1;
+    }
+
+    EVP_MD_CTX_free(file_ctx);
+    return 0;
+}
+
+// The caller is responsible for closing the out file
+static int fsp_rx_handle_chunked_file(fsp_receiver_state_t *rx, fsp_file_entry_t *entry, FILE *fp, FILE *out) {
+
+
+    return 0;
+}
+
+
 static int fsp_rx_handle_file_data(fsp_receiver_state_t *rx, FILE *fp) {
     if (rx->expected_files == 0) return -1;
     
@@ -195,12 +262,32 @@ static int fsp_rx_handle_file_data(fsp_receiver_state_t *rx, FILE *fp) {
         fsp_file_entry_t *entry = &rx->entries[i];
 
         if (entry->size == 0) continue; // skip empty files
+        char filepath[PATH_MAX+512];
+        if ( strlen(rx->current_dir) > 0 ) {
+            snprintf(filepath, sizeof(filepath), "%s/%s/%s", rx->target_path, rx->current_dir, entry->name);
+        } else {
+            snprintf(filepath, sizeof(filepath), "%s/%s", rx->target_path, entry->name);
+        }
 
-        // TODO: Get the data, we known the size
-        // we compute the SHA256 on the fly - depends on the filesize there are chunks or not
-        // and store the SHA256 value inside the existing struct for next cross check
-        // in @see fsp_rx_handle_file_hashes
-        // We also create and store the file too - the directory is already existing
+        FILE *out = fopen(filepath, "wb");
+        if (!out) {
+            perror("fopen");
+            return -1;
+        }
+       
+        if (entry->size > FSP_CHUNK_SIZE) {
+           if (fsp_rx_handle_chunked_file(rx, entry, fp, out) < 0) {
+                fclose(out);
+                return -1;
+            }
+        } else {
+             if (fsp_rx_handle_small_file(rx, entry, fp, out) < 0) {
+                fclose(out);
+                return -1;
+            }            
+        }
+
+        fclose(out);
     }
 
     // After reading all file data, transition to Phase 3 (hashes)

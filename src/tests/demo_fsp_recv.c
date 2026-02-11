@@ -26,11 +26,21 @@ int main(int argc, char **argv) {
 
     fsp_receiver_state_t state;
     state.state = FSP_RX_EXPECT_VERSION;
+    state.total_bytes = 0;
+    state.total_files = 0;
     state.file_buf = malloc(sizeof(uint8_t) * 1024 * 1024 * 16);
     if ( state.file_buf == NULL ) {
         return -1;
     }
+    state.proto_buf = malloc(sizeof(uint8_t) * 1024 * 1024 * 16);
+    if ( state.proto_buf == NULL ) {
+        return -1;
+    }
+    state.file_buf_size = sizeof(uint8_t) * 1024 * 1024 * 16;
+    state.proto_buf_size = sizeof(uint8_t) * 1024 * 1024 * 16;
+
     state.entries = NULL;
+    state.entries_capacity = 0;
 
     state.target_path = fsp_normalize_path(root_path);
     if (!state.target_path) {
@@ -50,6 +60,9 @@ int main(int argc, char **argv) {
     while(ret != -1) {
         ret = fsp_receiver_process_line(&state, fp);
     }
+
+    free(state.file_buf);
+    free(state.proto_buf);
 
     return 0;
 }

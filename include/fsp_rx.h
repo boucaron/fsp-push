@@ -46,9 +46,16 @@ typedef struct fsp_receiver_state {
     // Protocol FSM
     fsp_rx_state_t state;
 
-    // Optional buffer for reading file data / hashes if needed
+    // Buffer for writting file data
     uint8_t *file_buf;
     size_t file_buf_size;
+    // Buffer for reading file data from protocol
+    uint8_t *proto_buf;
+    size_t proto_buf_size;
+
+    // Stats
+    uint64_t total_files;
+    uint64_t total_bytes;
 
 } fsp_receiver_state_t;
 
