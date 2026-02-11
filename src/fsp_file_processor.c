@@ -372,9 +372,11 @@ static int fsp_send_file_entry_buf(fsp_buf_writer_t *bw,
 #endif
 
     // Push fixed-size fields into the buffer
-    uint16_t name_len = (uint16_t)strnlen(entry->name, NAME_MAX);
-    if (fsp_bw_push(bw, &name_len, sizeof(name_len)) < 0) return -1; // Send name size
-    if (fsp_bw_push(bw, entry->name, name_len) < 0) return -1;
+    size_t len = strnlen(entry->name, NAME_MAX);
+    if (len > UINT16_MAX) return -1;
+    uint16_t name_len_be = htobe16((uint16_t)len);
+    if (fsp_bw_push(bw, &name_len_be, sizeof(name_len_be)) < 0) return -1; // Send name size
+    if (fsp_bw_push(bw, entry->name, len) < 0) return -1;
 
     uint64_t size_be = htobe64(entry->size);
     if (fsp_bw_push(bw, &size_be, sizeof(size_be)) < 0) return -1; // Send filesize

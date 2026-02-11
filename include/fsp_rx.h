@@ -84,14 +84,13 @@ static inline void fsp_receiver_init(fsp_receiver_state_t *rx) {
 
 
 
-static int fsp_rx_read_full(int fd, void *buf, size_t len) {
-    uint8_t *p = (uint8_t*)buf;
+static int fsp_rx_read_full(FILE *fp, void *buf, size_t len) {
+    uint8_t *p = buf;
     size_t off = 0;
     while (off < len) {
-        ssize_t r = read(fd, p + off, len - off);
-        if (r < 0) { perror("read"); return -1; }
-        if (r == 0) return -1; // EOF before reading full
-        off += (size_t)r;
+        size_t r = fread(p + off, 1, len - off, fp);
+        if (r == 0) return -1;
+        off += r;
     }
     return 0;
 }

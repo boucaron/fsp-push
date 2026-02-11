@@ -126,34 +126,34 @@ static int fsp_rx_handle_file_count(fsp_receiver_state_t *rx, FILE *fp) {
 }
 
 static int fsp_rx_handle_file_metadata(fsp_receiver_state_t *rx, FILE *fp) {
-    int fd = fileno(fp);
+  
 
     for (size_t i = rx->files_received; i < rx->expected_files; i++) {
         fsp_file_entry_t *entry = &rx->entries[i];
 
         // 1 Read filename length (uint16_t, network byte order)
-        uint16_t name_len_be;
-        if (fsp_rx_read_full(fd, &name_len_be, sizeof(name_len_be)) < 0) return -1;
-        uint16_t name_len = be16toh(name_len_be);
+        uint8_t name_len_buf[2];
+        if (fsp_rx_read_full(fp, name_len_buf, sizeof(name_len_buf)) < 0) return -1;
+        uint16_t name_len = ((uint16_t)name_len_buf[0] << 8) | name_len_buf[1];
 
         // Optional safety: limit path length
         if (name_len > NAME_MAX) return -1;
 
         // 2️ Read filename
-        if (fsp_rx_read_full(fd, entry->name, name_len) < 0) return -1;
+        if (fsp_rx_read_full(fp, entry->name, name_len) < 0) return -1;
         entry->name[name_len] = '\0'; // null-terminate
 
         // 3️ Read file size (uint64_t, network byte order)
         uint64_t size_be;
-        if (fsp_rx_read_full(fd, &size_be, sizeof(size_be)) < 0) return -1;
+        if (fsp_rx_read_full(fp, &size_be, sizeof(size_be)) < 0) return -1;
         entry->size = be64toh(size_be);
 
         // 4️ Read file hash -- PLACEHOLDER
-        if (fsp_rx_read_full(fd, entry->file_hash, SHA256_DIGEST_LENGTH) < 0) return -1;
+        if (fsp_rx_read_full(fp, entry->file_hash, SHA256_DIGEST_LENGTH) < 0) return -1;
 
         // 5️ Read number of chunks (uint64_t, network byte order) -- SHOULD BE ZERO AT THIS STAGE
         uint64_t num_chunks_be;
-        if (fsp_rx_read_full(fd, &num_chunks_be, sizeof(num_chunks_be)) < 0) return -1;
+        if (fsp_rx_read_full(fp, &num_chunks_be, sizeof(num_chunks_be)) < 0) return -1;
         entry->num_chunks = be64toh(num_chunks_be);
 
         // Optional safety: impose maximum number of chunks
@@ -165,7 +165,7 @@ static int fsp_rx_handle_file_metadata(fsp_receiver_state_t *rx, FILE *fp) {
             entry->cap_chunks = entry->num_chunks;
 
             // Read chunk hashes from the stream
-            if (fsp_rx_read_full(fd, entry->chunk_hashes, entry->num_chunks * SHA256_DIGEST_LENGTH) < 0) {
+            if (fsp_rx_read_full(fp, entry->chunk_hashes, entry->num_chunks * SHA256_DIGEST_LENGTH) < 0) {
                 free(entry->chunk_hashes);
                 entry->chunk_hashes = NULL;
                 return -1;
@@ -189,8 +189,7 @@ static int fsp_rx_handle_file_metadata(fsp_receiver_state_t *rx, FILE *fp) {
 
 static int fsp_rx_handle_file_data(fsp_receiver_state_t *rx, FILE *fp) {
     if (rx->expected_files == 0) return -1;
-
-    int fd = fileno(fp);
+    
 
     for (size_t i = 0; i < rx->expected_files; i++) {
         fsp_file_entry_t *entry = &rx->entries[i];
@@ -211,14 +210,14 @@ static int fsp_rx_handle_file_data(fsp_receiver_state_t *rx, FILE *fp) {
 
 
 static int fsp_rx_handle_file_hashes(fsp_receiver_state_t *rx, FILE *fp) {
-    int fd = fileno(fp);
+
 
     for (size_t i = rx->files_received; i < rx->expected_files; i++) {
         fsp_file_entry_t *entry = &rx->entries[i];
 
         // 1 Read filename length (uint16_t, network byte order)
         uint16_t name_len_be;
-        if (fsp_rx_read_full(fd, &name_len_be, sizeof(name_len_be)) < 0) return -1;
+        if (fsp_rx_read_full(fp, &name_len_be, sizeof(name_len_be)) < 0) return -1;
         uint16_t name_len = be16toh(name_len_be);
 
         // Optional safety: limit path length
@@ -227,24 +226,24 @@ static int fsp_rx_handle_file_hashes(fsp_receiver_state_t *rx, FILE *fp) {
         // 2️ Read filename and cross check
         char     name[NAME_MAX + 1];
         memset(name, 0, sizeof(name));
-        if (fsp_rx_read_full(fd, name, name_len) < 0) return -1;
+        if (fsp_rx_read_full(fp, name, name_len) < 0) return -1;
         if ( strcmp(entry->name, name) != 0 ) return -1;
 
         // 3️ Read file size (uint64_t, network byte order) and cross check
         uint64_t size_be;
-        if (fsp_rx_read_full(fd, &size_be, sizeof(size_be)) < 0) return -1;
+        if (fsp_rx_read_full(fp, &size_be, sizeof(size_be)) < 0) return -1;
         uint64_t size = be64toh(size_be);
         if (entry->size != size) return -1;        
 
         // 4️ Read file hash - REAL DATA
         unsigned char file_hash[SHA256_DIGEST_LENGTH];        
-        if (fsp_rx_read_full(fd, file_hash, SHA256_DIGEST_LENGTH) < 0) return -1;
+        if (fsp_rx_read_full(fp, file_hash, SHA256_DIGEST_LENGTH) < 0) return -1;
         // cross check file_hash entry->file_hash
         if ( memcmp(file_hash, entry->file_hash, SHA256_DIGEST_LENGTH) != 0) return -1;
 
         // 5️ Read number of chunks (uint64_t, network byte order) - NOT ZERO IF REAL DATA & cross check
         uint64_t num_chunks_be;
-        if (fsp_rx_read_full(fd, &num_chunks_be, sizeof(num_chunks_be)) < 0) return -1;
+        if (fsp_rx_read_full(fp, &num_chunks_be, sizeof(num_chunks_be)) < 0) return -1;
         uint64_t num_chunks = be64toh(num_chunks_be);
         if (entry->num_chunks != num_chunks) return -1;
     
@@ -256,7 +255,7 @@ static int fsp_rx_handle_file_hashes(fsp_receiver_state_t *rx, FILE *fp) {
             unsigned char *chunk_hashes = malloc(num_chunks * SHA256_DIGEST_LENGTH);
             if (!chunk_hashes) return -1;            
 
-            if (fsp_rx_read_full(fd, chunk_hashes, num_chunks * SHA256_DIGEST_LENGTH) < 0) {
+            if (fsp_rx_read_full(fp, chunk_hashes, num_chunks * SHA256_DIGEST_LENGTH) < 0) {
                 free(chunk_hashes);
                 return -1;
             }
