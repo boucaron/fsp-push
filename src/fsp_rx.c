@@ -291,14 +291,36 @@ static int fsp_rx_handle_file_data(fsp_receiver_state_t *rx, FILE *fp) {
     }
 
     // After reading all file data, transition to Phase 3 (hashes)
+    rx->state = FSP_RX_EXPECT_FILE_HASHES_COUNT;
+    return 0;
+}
+
+
+static int fsp_rx_handle_hashfiles_count(fsp_receiver_state_t *rx, FILE *fp) {
+    char line[128];
+    if (fsp_rx_readline(fp, line, sizeof(line)) < 0) return -1;
+
+    size_t count = 0;
+    if (sscanf(line, "HASH FILES: %zu", &count) != 1) {
+        fprintf(stderr, "Expected HASH FILES: N, got: %s\n", line);
+        return -1;
+    }
+
+    if ( count > FSP_MAX_FILES_PER_LIST ) {
+        fprintf(stderr, "Attempt to push more files than FSP_MAX_FILES_PER_LIST\n");
+        return -1;
+    }
+
     rx->state = FSP_RX_EXPECT_FILE_HASHES;
     return 0;
 }
 
 
+
 static int fsp_rx_handle_file_hashes(fsp_receiver_state_t *rx, FILE *fp) {
 
 
+    int file_received = 0 ;
     for (size_t i = rx->files_received; i < rx->expected_files; i++) {
         fsp_file_entry_t *entry = &rx->entries[i];
 
@@ -365,10 +387,11 @@ static int fsp_rx_handle_file_hashes(fsp_receiver_state_t *rx, FILE *fp) {
         fprintf(stderr, "fsp_rx_handle_file_hashes - Cross check OK : %s (%lu bytes, %lu chunks)\n", 
             entry->name, entry->size, entry->num_chunks);
        
-        // Eveything is fine and cross checked
-        rx->files_received++;
+        // Eveything is fine and cross checked        
+        file_received++;
     }
 
+    rx->files_received += file_received;
 
     // Done with this batch, go back to idle to receive new directory or END
     rx->state = FSP_RX_IDLE;
@@ -395,9 +418,12 @@ int fsp_receiver_process_line(fsp_receiver_state_t *rx, FILE *fp) {
             return fsp_rx_handle_file_metadata(rx, fp);
         case FSP_RX_EXPECT_FILE_DATA:
             return fsp_rx_handle_file_data(rx, fp);
+        case FSP_RX_EXPECT_FILE_HASHES_COUNT:
+            return fsp_rx_handle_hashfiles_count(rx, fp);
         case FSP_RX_EXPECT_FILE_HASHES:
             return fsp_rx_handle_file_hashes(rx, fp);
         case FSP_RX_DONE:
+            exit(0);
             return 0; // Already done
         default:
             fprintf(stderr,"fsp_receiver_process_line: Unknown state \n");
