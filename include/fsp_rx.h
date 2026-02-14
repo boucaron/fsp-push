@@ -22,6 +22,7 @@ typedef enum {
     FSP_RX_EXPECT_FILE_COUNT,       // FILES: N
     FSP_RX_EXPECT_FILE_METADATA,    // N fsp_file_entry_t
     FSP_RX_EXPECT_FILE_DATA,      // Phase 2: read file content for N files
+    FSP_RX_EXPECT_FILE_HASHES_COUNT, // HASH FILES: N
     FSP_RX_EXPECT_FILE_HASHES,      // N fsp_file_entry_t with hashes
     FSP_RX_DONE                     // received END
 } fsp_rx_state_t;
