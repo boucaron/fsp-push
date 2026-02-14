@@ -18,10 +18,28 @@ void fsp_receiver_progressbar(fsp_receiver_state_t *rx)
        - or every 128 MB */
     int files_trigger = (rx->total_files % 100) == 0;
     int bytes_trigger =
-        rx->total_bytes >= (rx->total_bytes & ~((128ULL << 20) - 1));
+        rx->total_bytes >= rx->last_speed_bytes + (128ULL << 20);
 
     if (!files_trigger && !bytes_trigger)
         return;
+
+    /* --- Update throughput ONLY on byte trigger --- */
+    if (bytes_trigger) {
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+
+        uint64_t delta_bytes =
+            rx->total_bytes - rx->last_speed_bytes;
+
+        double delta_time =
+            timespec_diff_sec(now, rx->last_speed_ts);
+
+        if (delta_time > 0.0)
+            rx->last_throughput = delta_bytes / delta_time;
+
+        rx->last_speed_bytes = rx->total_bytes;
+        rx->last_speed_ts = now;
+    }
 
     char total_buf[64], recv_buf[64];
 
@@ -43,9 +61,35 @@ void fsp_receiver_progressbar(fsp_receiver_state_t *rx)
         total_buf
     );
 
+    /* --- Display speed + ETA --- */
+    if (rx->last_throughput > 0.0) {
+
+        char speed_buf[32];
+        fsp_print_size((uint64_t)rx->last_throughput,
+                       speed_buf, sizeof(speed_buf));
+
+        fprintf(stderr,
+                "  Speed " ANSI_MAGENTA "%s/s" ANSI_RESET,
+                speed_buf);
+
+        /* ETA */
+        uint64_t remaining_bytes =
+            rx->expected_total_bytes - rx->total_bytes;
+
+        double eta_sec =
+            (double)remaining_bytes / rx->last_throughput;
+
+        int hours   = (int)(eta_sec / 3600);
+        int minutes = (int)((eta_sec - hours * 3600) / 60);
+        int seconds = (int)(eta_sec - hours * 3600 - minutes * 60);
+
+        fprintf(stderr,
+                "  ETA " ANSI_YELLOW "%02d:%02d:%02d" ANSI_RESET,
+                hours, minutes, seconds);
+    }
+
     fflush(stderr);
 }
-
 // -----------------------------------------------------------------------------
 // State handlers
 // -----------------------------------------------------------------------------

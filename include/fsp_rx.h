@@ -6,6 +6,7 @@
 #include <string.h>
 #include <limits.h>
 #include <unistd.h>
+#include <time.h>
 
 #include "fsp.h"
 
@@ -63,6 +64,10 @@ typedef struct fsp_receiver_state {
     // Provided by the sender
     uint64_t expected_total_bytes;
     uint64_t expected_total_files;
+    // Throughput tracking
+    uint64_t last_speed_bytes;
+    struct timespec last_speed_ts;
+    double last_throughput;
 
 } fsp_receiver_state_t;
 
