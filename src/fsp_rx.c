@@ -6,6 +6,7 @@
 
 #include <sys/stat.h>
 #include <errno.h>
+#include <ctype.h>
 
 #include <openssl/evp.h>
 
@@ -159,6 +160,14 @@ static int fsp_rx_handle_idle(fsp_receiver_state_t *rx, FILE *fp) {
     char line[PATH_MAX + 128];
     if (fsp_rx_readline(fp, line, sizeof(line)) < 0) return -1;
 
+     // Skip empty lines
+    char *p = line;
+    while (*p && isspace((unsigned char)*p)) p++;
+    if (*p == '\0') {
+        rx->state = FSP_RX_DONE;
+        return 0;
+    }
+
     if (strncmp(line, "DIRECTORY: ", 11) == 0) {
         strncpy(rx->current_dir, line+11, sizeof(rx->current_dir)-1);
         rx->current_dir[sizeof(rx->current_dir)-1] = '\0';
@@ -182,8 +191,12 @@ static int fsp_rx_handle_idle(fsp_receiver_state_t *rx, FILE *fp) {
 
     if (strcmp(line, "END") == 0) {
         rx->state = FSP_RX_DONE;
+        fprintf(stderr,"END found exiting nicely\n");
+        exit(0);
         return 0;
     }
+
+    fprintf(stderr, "Protocol error: unexpected line: '%s'\n", line);
 
     return -1;
 }

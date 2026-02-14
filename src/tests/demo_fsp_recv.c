@@ -55,6 +55,10 @@ int main(int argc, char **argv) {
 
     FILE *fp = stdin;
 
+    clock_gettime(CLOCK_MONOTONIC, &state.last_speed_ts);
+    state.last_speed_bytes = 0;
+    state.last_throughput  = 0.0;
+
     // Start main loop
     int ret = fsp_receiver_process_line(&state, fp);
     while(ret != -1) {
@@ -64,7 +68,7 @@ int main(int argc, char **argv) {
     free(state.file_buf);
     free(state.proto_buf);
 
-    fprintf(stderr,"\n Finish OK\n");
+    fprintf(stderr,"\n ERROR found - check error before\n");
 
-    return 0;
+    return -1;
 }
