@@ -17,10 +17,10 @@ void fsp_file_processor_progressbar(fsp_walker_state_t *state) {
 
      /* Throttle updates:
        - every 100 files
-       - or every 128 MB */
+       - or every 10 MB */
     int files_trigger = (state->total_files % 100) == 0;
-    int bytes_trigger =
-        state->total_bytes >= state->last_speed_bytes + (128ULL << 20);
+    int bytes_trigger = 
+        state->total_bytes >= state->last_speed_bytes + (10ULL << 20);
 
     if (!files_trigger && !bytes_trigger)
         return;
@@ -51,7 +51,16 @@ void fsp_file_processor_progressbar(fsp_walker_state_t *state) {
     fsp_print_size(state->total_bytes,
                    sent_buf, sizeof(sent_buf));
 
-    fprintf(stderr, "\r\033[2K");
+    int is_terminal = isatty(fileno(stderr));
+
+    if (is_terminal) {
+        // Clear current line
+        fprintf(stderr, "\r\033[2K");
+    } else {
+        // Non-terminal: just print a newline
+        fprintf(stderr, "\n");
+        fflush(stderr);
+    }    
 
     fprintf(stderr,
         ANSI_BOLD "Progress:" ANSI_RESET " "
@@ -261,6 +270,7 @@ static int fsp_compute_big_file(const char *path,
             }
 
             state->total_bytes += n;
+            fsp_file_processor_progressbar(state);
 
             // Update SHA256 for this chunk
             if (EVP_DigestUpdate(chunk_ctx, buf, n) != 1) {
