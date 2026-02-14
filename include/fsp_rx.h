@@ -17,6 +17,8 @@ typedef enum {
     FSP_RX_IDLE = 0,                // waiting for directory or END
     FSP_RX_EXPECT_VERSION,          // first line: VERSION: X
     FSP_RX_EXPECT_MODE,             // second line: MODE: XXX
+    FSP_RX_STAT_BYTES,              // third line: STAT_BYTEs: N
+    FSP_RX_STAT_FILES,              // fourth line: STATE_FILES: N
     FSP_RX_EXPECT_DIR,              // DIRECTORY: <path>
     FSP_RX_EXPECT_FILE_LIST,        // FILE_LIST
     FSP_RX_EXPECT_FILE_COUNT,       // FILES: N
@@ -57,6 +59,10 @@ typedef struct fsp_receiver_state {
     // Stats
     uint64_t total_files;
     uint64_t total_bytes;
+
+    // Provided by the sender
+    uint64_t expected_total_bytes;
+    uint64_t expected_total_files;
 
 } fsp_receiver_state_t;
 

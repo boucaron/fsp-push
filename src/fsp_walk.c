@@ -71,6 +71,35 @@ int fsp_walk(const char *root_path,
         fsp_bw_push(&state->protowritebuf, protomode, strlen(protomode));
         fsp_bw_flush(&state->protowritebuf);
 
+        char statbuf[128];
+        int len = snprintf(statbuf, sizeof(statbuf), "STAT_BYTES: %" PRIu64 "\n",
+                        state->total_bytes);
+                        
+        if (len < 0 || (size_t)len >= sizeof(statbuf)) {
+            fprintf(stderr, "STAT_BYTES format error\n");
+            return -1;
+        }
+
+        if (fsp_bw_push(&state->protowritebuf, statbuf, len) < 0)
+            return -1;
+
+        if (fsp_bw_flush(&state->protowritebuf) < 0)
+            return -1;
+        
+        len = snprintf(statbuf, sizeof(statbuf),
+                    "STAT_FILES: %" PRIu64 "\n",
+                    state->total_files);
+
+        if (len < 0 || (size_t)len >= sizeof(statbuf)) {
+            fprintf(stderr, "STAT_FILES format error\n");
+            return -1;
+        }
+
+        if (fsp_bw_push(&state->protowritebuf, statbuf, len) < 0)
+            return -1;
+
+        if (fsp_bw_flush(&state->protowritebuf) < 0)
+            return -1;
 
 
         int ret = fsp_walk_dir_recursive(abs_root, cbs, state);

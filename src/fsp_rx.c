@@ -36,9 +36,42 @@ static int fsp_rx_handle_mode(fsp_receiver_state_t *rx, FILE *fp) {
          return -1;
     }
 
+    rx->state = FSP_RX_STAT_BYTES;
+    return 0;
+}
+
+
+static int fsp_rx_stat_bytes(fsp_receiver_state_t *rx, FILE *fp) {
+    char line[PATH_MAX + 128];
+    if (fsp_rx_readline(fp, line, sizeof(line)) < 0) return -1;
+
+    size_t count = 0;
+    if (sscanf(line, "STAT_BYTES: %zu", &count) != 1) {
+        fprintf(stderr, "Expected STAT_BYTES: N, got: %s\n", line);
+        return -1;
+    }
+    rx->expected_total_bytes = count;
+
+    rx->state = FSP_RX_STAT_FILES;
+    return 0;
+}
+
+static int fsp_rx_stat_files(fsp_receiver_state_t *rx, FILE *fp) {
+    char line[PATH_MAX + 128];
+    if (fsp_rx_readline(fp, line, sizeof(line)) < 0) return -1;
+
+    size_t count = 0;
+    if (sscanf(line, "STAT_FILES: %zu", &count) != 1) {
+        fprintf(stderr, "Expected STAT_FILES: N, got: %s\n", line);
+        return -1;
+    }
+    rx->expected_total_files = count;
+
+
     rx->state = FSP_RX_IDLE;
     return 0;
 }
+
 
 static int fsp_rx_handle_idle(fsp_receiver_state_t *rx, FILE *fp) {
     char line[PATH_MAX + 128];
@@ -480,6 +513,10 @@ int fsp_receiver_process_line(fsp_receiver_state_t *rx, FILE *fp) {
             return fsp_rx_handle_version(rx, fp);
         case FSP_RX_EXPECT_MODE:
             return fsp_rx_handle_mode(rx, fp);
+        case FSP_RX_STAT_BYTES:
+            return fsp_rx_stat_bytes(rx, fp);
+        case FSP_RX_STAT_FILES:
+            return fsp_rx_stat_files(rx, fp);        
         case FSP_RX_IDLE:
             return fsp_rx_handle_idle(rx, fp);
         case FSP_RX_EXPECT_FILE_LIST:
