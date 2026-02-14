@@ -7,7 +7,6 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include <ctype.h>
-
 #include <openssl/evp.h>
 
 
@@ -376,15 +375,16 @@ static int fsp_rx_handle_small_file(fsp_receiver_state_t *rx, fsp_file_entry_t *
 }
 
 // The caller is responsible for closing the out file
-static int fsp_rx_handle_chunked_file(fsp_receiver_state_t *rx, fsp_file_entry_t *entry, FILE *fp, FILE *out) {
+static int fsp_rx_handle_chunked_file(fsp_receiver_state_t *rx,
+                                      fsp_file_entry_t *entry,
+                                      FILE *fp,
+                                      FILE *out) {
     uint8_t *buf = rx->proto_buf;
     size_t buf_size = rx->proto_buf_size;
-
     uint64_t remaining = entry->size;
 
     EVP_MD_CTX *chunk_ctx  = EVP_MD_CTX_new();
     EVP_MD_CTX *merkle_ctx = EVP_MD_CTX_new();
-
     if (!chunk_ctx || !merkle_ctx) {
         EVP_MD_CTX_free(chunk_ctx);
         EVP_MD_CTX_free(merkle_ctx);
@@ -392,18 +392,15 @@ static int fsp_rx_handle_chunked_file(fsp_receiver_state_t *rx, fsp_file_entry_t
     }
 
     EVP_DigestInit_ex(merkle_ctx, EVP_sha256(), NULL);
+    entry->num_chunks = 0;
 
     while (remaining > 0) {
-
-        uint64_t chunk_bytes =
-            remaining < FSP_CHUNK_SIZE ? remaining : FSP_CHUNK_SIZE;
-
+        uint64_t chunk_bytes = remaining < FSP_CHUNK_SIZE ? remaining : FSP_CHUNK_SIZE;
         uint64_t processed = 0;
 
         EVP_DigestInit_ex(chunk_ctx, EVP_sha256(), NULL);
 
         while (processed < chunk_bytes) {
-
             size_t to_read = buf_size;
             if (to_read > chunk_bytes - processed)
                 to_read = (size_t)(chunk_bytes - processed);
@@ -420,6 +417,7 @@ static int fsp_rx_handle_chunked_file(fsp_receiver_state_t *rx, fsp_file_entry_t
 
             rx->total_bytes += n;
             processed += n;
+
             fsp_receiver_progressbar(rx);
 
             if (EVP_DigestUpdate(chunk_ctx, buf, n) != 1) {
@@ -437,15 +435,34 @@ static int fsp_rx_handle_chunked_file(fsp_receiver_state_t *rx, fsp_file_entry_t
         }
 
         uint8_t chunk_hash[SHA256_DIGEST_LENGTH];
-
         EVP_DigestFinal_ex(chunk_ctx, chunk_hash, NULL);
 
-        // Update Merkle level 0
+        // Ensure capacity for chunk hashes
+        if (entry->num_chunks >= entry->cap_chunks) {
+            size_t new_cap = entry->cap_chunks ? entry->cap_chunks * 2 : 16;
+            unsigned char (*tmp)[SHA256_DIGEST_LENGTH] =
+                realloc(entry->chunk_hashes, new_cap * sizeof(*entry->chunk_hashes));
+            if (!tmp) {
+                perror("realloc chunk_hashes");
+                EVP_MD_CTX_free(chunk_ctx);
+                EVP_MD_CTX_free(merkle_ctx);
+                return -1;
+            }
+            entry->chunk_hashes = tmp;
+            entry->cap_chunks = new_cap;
+        }
+
+        // Store the chunk hash
+        memcpy(entry->chunk_hashes[entry->num_chunks], chunk_hash, SHA256_DIGEST_LENGTH);
+        entry->num_chunks++;
+
+        // Update Merkle Level 0 hash
         EVP_DigestUpdate(merkle_ctx, chunk_hash, SHA256_DIGEST_LENGTH);
 
         remaining -= chunk_bytes;
     }
 
+    // Final Merkle hash stored in entry->file_hash
     EVP_DigestFinal_ex(merkle_ctx, entry->file_hash, NULL);
 
     EVP_MD_CTX_free(chunk_ctx);
@@ -453,7 +470,6 @@ static int fsp_rx_handle_chunked_file(fsp_receiver_state_t *rx, fsp_file_entry_t
 
     return 0;
 }
-
 
 
 static int fsp_rx_handle_file_data(fsp_receiver_state_t *rx, FILE *fp) {
