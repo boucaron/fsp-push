@@ -2,11 +2,49 @@
 #include "fsp.h"
 #include "fsp_walk.h"
 #include "fsp_rx.h"
+#include "fsp_progress.h"
 
 #include <sys/stat.h>
 #include <errno.h>
 
 #include <openssl/evp.h>
+
+
+// Progress Bar
+void fsp_receiver_progressbar(fsp_receiver_state_t *rx)
+{
+    /* Throttle:
+       - every 100 files
+       - or every 128 MB */
+    int files_trigger = (rx->total_files % 100) == 0;
+    int bytes_trigger =
+        rx->total_bytes >= (rx->total_bytes & ~((128ULL << 20) - 1));
+
+    if (!files_trigger && !bytes_trigger)
+        return;
+
+    char total_buf[64], recv_buf[64];
+
+    fsp_print_size(rx->expected_total_bytes,
+                   total_buf, sizeof(total_buf));
+
+    fsp_print_size(rx->total_bytes,
+                   recv_buf, sizeof(recv_buf));
+
+    fprintf(stderr, "\r\033[2K");
+
+    fprintf(stderr,
+        ANSI_BOLD "Receiving:" ANSI_RESET " "
+        "Files " ANSI_CYAN "%" PRIu64 "/%" PRIu64 ANSI_RESET "  "
+        "Data " ANSI_GREEN "%s/%s" ANSI_RESET,
+        rx->total_files,
+        rx->expected_total_files,
+        recv_buf,
+        total_buf
+    );
+
+    fflush(stderr);
+}
 
 // -----------------------------------------------------------------------------
 // State handlers
@@ -253,6 +291,7 @@ static int fsp_rx_handle_small_file(fsp_receiver_state_t *rx, fsp_file_entry_t *
 
         rx->total_bytes += n;
         remaining -= n;
+        fsp_receiver_progressbar(rx);
 
         if (EVP_DigestUpdate(file_ctx, buf, n) != 1) {
             fprintf(stderr, "EVP_DigestUpdate failed\n");
@@ -324,6 +363,7 @@ static int fsp_rx_handle_chunked_file(fsp_receiver_state_t *rx, fsp_file_entry_t
 
             rx->total_bytes += n;
             processed += n;
+            fsp_receiver_progressbar(rx);
 
             if (EVP_DigestUpdate(chunk_ctx, buf, n) != 1) {
                 EVP_MD_CTX_free(chunk_ctx);
@@ -497,6 +537,8 @@ static int fsp_rx_handle_file_hashes(fsp_receiver_state_t *rx, FILE *fp) {
     }
 
     rx->files_received += file_received;
+    rx->total_files += file_received;
+    fsp_receiver_progressbar(rx);
 
     // Done with this batch, go back to idle to receive new directory or END
     rx->state = FSP_RX_IDLE;

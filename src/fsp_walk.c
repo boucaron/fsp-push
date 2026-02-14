@@ -73,7 +73,7 @@ int fsp_walk(const char *root_path,
 
         char statbuf[128];
         int len = snprintf(statbuf, sizeof(statbuf), "STAT_BYTES: %" PRIu64 "\n",
-                        state->total_bytes);
+                        state->dry_run->file_total_size);
                         
         if (len < 0 || (size_t)len >= sizeof(statbuf)) {
             fprintf(stderr, "STAT_BYTES format error\n");
@@ -88,7 +88,7 @@ int fsp_walk(const char *root_path,
         
         len = snprintf(statbuf, sizeof(statbuf),
                     "STAT_FILES: %" PRIu64 "\n",
-                    state->total_files);
+                    state->dry_run->file_count);
 
         if (len < 0 || (size_t)len >= sizeof(statbuf)) {
             fprintf(stderr, "STAT_FILES format error\n");

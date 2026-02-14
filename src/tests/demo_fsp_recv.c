@@ -64,5 +64,7 @@ int main(int argc, char **argv) {
     free(state.file_buf);
     free(state.proto_buf);
 
+    fprintf(stderr,"\n Finish OK\n");
+
     return 0;
 }
