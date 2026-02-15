@@ -294,27 +294,45 @@ static int fsp_rx_handle_file_metadata(fsp_receiver_state_t *rx, FILE *fp) {
 
         // 1 Read filename length (uint16_t, network byte order)
         uint8_t name_len_buf[2];
-        if (fsp_rx_read_full(fp, name_len_buf, sizeof(name_len_buf)) < 0) return -1;
+        if (fsp_rx_read_full(fp, name_len_buf, sizeof(name_len_buf)) < 0) {
+            fprintf(stderr,"fsp_rx_handle_file_metadata cannot read name length for entry %ld\n", i);
+            return -1;
+        }
         uint16_t name_len = ((uint16_t)name_len_buf[0] << 8) | name_len_buf[1];
 
         // Optional safety: limit path length
-        if (name_len > NAME_MAX) return -1;
+        if (name_len > NAME_MAX) {            
+            fprintf(stderr,"fsp_rx_handle_file_metadata name_len too big for entry %ld\n", i);
+            return -1;
+        }
 
         // 2️ Read filename
-        if (fsp_rx_read_full(fp, entry->name, name_len) < 0) return -1;
+        if (fsp_rx_read_full(fp, entry->name, name_len) < 0) {
+            fprintf(stderr,"fsp_rx_handle_file_metadata cannot read entry->name for entry %ld\n", i);
+            return -1;
+        }
         entry->name[name_len] = '\0'; // null-terminate
 
         // 3️ Read file size (uint64_t, network byte order)
         uint64_t size_be;
-        if (fsp_rx_read_full(fp, &size_be, sizeof(size_be)) < 0) return -1;
+        if (fsp_rx_read_full(fp, &size_be, sizeof(size_be)) < 0) {
+            fprintf(stderr,"fsp_rx_handle_file_metadata cannot read filesize for entry %ld\n", i);
+            return -1;
+        }
         entry->size = be64toh(size_be);
 
         // 4️ Read file hash -- PLACEHOLDER
-        if (fsp_rx_read_full(fp, entry->file_hash, SHA256_DIGEST_LENGTH) < 0) return -1;
+        if (fsp_rx_read_full(fp, entry->file_hash, SHA256_DIGEST_LENGTH) < 0) {
+            fprintf(stderr,"fsp_rx_handle_file_metadata cannot read file_hash placeholder for entry %ld\n", i);
+            return -1;
+        }
 
         // 5️ Read number of chunks (uint64_t, network byte order) -- SHOULD BE ZERO AT THIS STAGE
         uint64_t num_chunks_be;
-        if (fsp_rx_read_full(fp, &num_chunks_be, sizeof(num_chunks_be)) < 0) return -1;
+        if (fsp_rx_read_full(fp, &num_chunks_be, sizeof(num_chunks_be)) < 0)  {
+            fprintf(stderr,"fsp_rx_handle_file_metadata cannot read num_chunks placeholder for entry %ld\n", i);
+            return -1;
+        }
         entry->num_chunks = be64toh(num_chunks_be);
 
         // Optional safety: impose maximum number of chunks
@@ -322,13 +340,17 @@ static int fsp_rx_handle_file_metadata(fsp_receiver_state_t *rx, FILE *fp) {
         // 6️ Allocate chunk hashes array if needed
         if (entry->num_chunks > 0) {
             entry->chunk_hashes = malloc(entry->num_chunks * SHA256_DIGEST_LENGTH);
-            if (!entry->chunk_hashes) return -1;
+            if (!entry->chunk_hashes) {
+                fprintf(stderr,"fsp_rx_handle_file_metadata cannot malloc num_chunks placeholder for entry %ld\n", i);
+                return -1;
+            }
             entry->cap_chunks = entry->num_chunks;
 
             // Read chunk hashes from the stream
             if (fsp_rx_read_full(fp, entry->chunk_hashes, entry->num_chunks * SHA256_DIGEST_LENGTH) < 0) {
                 free(entry->chunk_hashes);
                 entry->chunk_hashes = NULL;
+                fprintf(stderr,"fsp_rx_handle_file_metadata cannot read chunks placeholder for entry %ld\n", i);
                 return -1;
             }
         } else {
@@ -353,10 +375,14 @@ static int fsp_rx_handle_file_metadata(fsp_receiver_state_t *rx, FILE *fp) {
 static int fsp_rx_handle_small_file(fsp_receiver_state_t *rx, fsp_file_entry_t *entry, FILE *fp, FILE *out) {
 
     EVP_MD_CTX *file_ctx = EVP_MD_CTX_new();
-    if (!file_ctx) return -1;
+    if (!file_ctx) {
+        fprintf(stderr,"fsp_rx_handle_small_file cannot create EVP_MD_CTX_new\n");
+        return -1;
+    }
 
     if (EVP_DigestInit_ex(file_ctx, EVP_sha256(), NULL) != 1) {
         EVP_MD_CTX_free(file_ctx);
+        fprintf(stderr,"fsp_rx_handle_small_file cannot EVP_DigestInit_ex\n");
         return -1;
     }
 
@@ -373,7 +399,7 @@ static int fsp_rx_handle_small_file(fsp_receiver_state_t *rx, fsp_file_entry_t *
                 EVP_MD_CTX_free(file_ctx);
                 return -1;
             }
-            fprintf(stderr, "Unexpected EOF while reading small file\n");
+            fprintf(stderr, "fsp_rx_handle_small_file, unexpected EOF while reading small file\n");
             EVP_MD_CTX_free(file_ctx);
             return -1;
         }
@@ -383,7 +409,7 @@ static int fsp_rx_handle_small_file(fsp_receiver_state_t *rx, fsp_file_entry_t *
         fsp_receiver_progressbar(rx);
 
         if (EVP_DigestUpdate(file_ctx, buf, n) != 1) {
-            fprintf(stderr, "EVP_DigestUpdate failed\n");
+            fprintf(stderr, "fsp_rx_handle_small_file, EVP_DigestUpdate failed\n");
             EVP_MD_CTX_free(file_ctx);
             return -1;
         }
@@ -391,6 +417,7 @@ static int fsp_rx_handle_small_file(fsp_receiver_state_t *rx, fsp_file_entry_t *
         size_t w = fwrite(buf, 1, n, out);
         if (w != n) {
             perror("fwrite");
+            fprintf(stderr, "fsp_rx_handle_small_file, fwrite failed\n");
             EVP_MD_CTX_free(file_ctx);
             return -1;
         }
@@ -398,7 +425,7 @@ static int fsp_rx_handle_small_file(fsp_receiver_state_t *rx, fsp_file_entry_t *
 
     // Store final SHA256 hash
     if (EVP_DigestFinal_ex(file_ctx, entry->file_hash, NULL) != 1) {
-        fprintf(stderr, "EVP_DigestFinal_ex failed\n");
+        fprintf(stderr, "fsp_rx_handle_small_file, EVP_DigestFinal_ex failed\n");
         EVP_MD_CTX_free(file_ctx);
         return -1;
     }
