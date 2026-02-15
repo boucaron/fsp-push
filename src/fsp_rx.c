@@ -246,6 +246,13 @@ static int fsp_rx_handle_idle(fsp_receiver_state_t *rx, FILE *fp) {
         return 0;
     }
 
+    // In case multiple FILE_LIST calls in a directory
+    if (strncmp(line, "FILE_LIST", 9) == 0 ) {
+         // Move to next state: expect file count
+        rx->state = FSP_RX_EXPECT_FILE_COUNT;
+        return 0;
+    }
+
     if (strcmp(line, "END") == 0) {
         rx->state = FSP_RX_DONE;
         fsp_receiver_progressbar(rx,1);
