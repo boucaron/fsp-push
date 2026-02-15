@@ -574,16 +574,19 @@ static int fsp_rx_handle_file_data(fsp_receiver_state_t *rx, FILE *fp) {
         FILE *out = fopen(filepath, "wb");
         if (!out) {
             perror("fopen");
+            fprintf(stderr,"fsp_rx_handle_file_data, fopen failed for %s\n", filepath);
             return -1;
         }
        
         if (entry->size > FSP_CHUNK_SIZE) {
            if (fsp_rx_handle_chunked_file(rx, entry, fp, out) < 0) {
                 fclose(out);
+                fprintf(stderr,"fsp_rx_handle_file_data, fsp_rx_handle_chunked_file filepath failed %s\n", filepath);
                 return -1;
             }
         } else {
              if (fsp_rx_handle_small_file(rx, entry, fp, out) < 0) {
+                fprintf(stderr,"fsp_rx_handle_file_data, fsp_rx_handle_small_file filepath failed %s\n", filepath);
                 fclose(out);
                 return -1;
             }            
@@ -600,16 +603,19 @@ static int fsp_rx_handle_file_data(fsp_receiver_state_t *rx, FILE *fp) {
 
 static int fsp_rx_handle_hashfiles_count(fsp_receiver_state_t *rx, FILE *fp) {
     char line[128];
-    if (fsp_rx_readline(fp, line, sizeof(line)) < 0) return -1;
+    if (fsp_rx_readline(fp, line, sizeof(line)) < 0) {
+        fprintf(stderr,"fsp_rx_handle_hashfiles_count, no data error\n");
+        return -1;
+    }
 
     size_t count = 0;
     if (sscanf(line, "HASH FILES: %zu", &count) != 1) {
-        fprintf(stderr, "Expected HASH FILES: N, got: %s\n", line);
+        fprintf(stderr, "fsp_rx_handle_hashfiles_count, waiting HASH FILES: N, got: %s\n", line);
         return -1;
     }
 
     if ( count > FSP_MAX_FILES_PER_LIST ) {
-        fprintf(stderr, "Attempt to push more files than FSP_MAX_FILES_PER_LIST\n");
+        fprintf(stderr, "fsp_rx_handle_hashfiles_count, attempt to push more files than FSP_MAX_FILES_PER_LIST\n");
         return -1;
     }
 
@@ -628,35 +634,65 @@ static int fsp_rx_handle_file_hashes(fsp_receiver_state_t *rx, FILE *fp) {
 
         // 1 Read filename length (uint16_t, network byte order)
         uint16_t name_len_be;
-        if (fsp_rx_read_full(fp, &name_len_be, sizeof(name_len_be)) < 0) return -1;
+        if (fsp_rx_read_full(fp, &name_len_be, sizeof(name_len_be)) < 0) {
+            fprintf(stderr, "fsp_rx_handle_file_hashes, name_len failed for entry %ld\n", i);
+            return -1;
+        }
         uint16_t name_len = be16toh(name_len_be);
 
         // Optional safety: limit path length
-        if (name_len > NAME_MAX) return -1;
+        if (name_len > NAME_MAX) {
+            fprintf(stderr, "fsp_rx_handle_file_hashes, name_len too big for entry %ld\n", i);
+            return -1;
+        }
 
         // 2️ Read filename and cross check
         char     name[NAME_MAX + 1];
         memset(name, 0, sizeof(name));
-        if (fsp_rx_read_full(fp, name, name_len) < 0) return -1;
-        if ( strcmp(entry->name, name) != 0 ) return -1;
+        if (fsp_rx_read_full(fp, name, name_len) < 0) {
+            fprintf(stderr, "fsp_rx_handle_file_hashes cannot read name for entry %ld\n", i);
+            return -1;
+        }
+        if ( strcmp(entry->name, name) != 0 ) {
+            fprintf(stderr, "fsp_rx_handle_file_hashes entry->name not matching %s for entry %ld\n", entry->name, i);
+            return -1;
+        }
 
         // 3️ Read file size (uint64_t, network byte order) and cross check
         uint64_t size_be;
-        if (fsp_rx_read_full(fp, &size_be, sizeof(size_be)) < 0) return -1;
+        if (fsp_rx_read_full(fp, &size_be, sizeof(size_be)) < 0) {
+            fprintf(stderr, "fsp_rx_handle_file_hashes cannot read size for entry %ld: %s\n", i, entry->name);
+            return -1;
+        }
         uint64_t size = be64toh(size_be);
-        if (entry->size != size) return -1;        
+        if (entry->size != size) {
+            fprintf(stderr, "fsp_rx_handle_file_hashes entry->size not matching %ld for entry %ld: %s\n", entry->size, i, entry->name);
+            return -1;        
+        }
 
         // 4️ Read file hash - REAL DATA
         unsigned char file_hash[SHA256_DIGEST_LENGTH];        
-        if (fsp_rx_read_full(fp, file_hash, SHA256_DIGEST_LENGTH) < 0) return -1;
+        if (fsp_rx_read_full(fp, file_hash, SHA256_DIGEST_LENGTH) < 0) {
+            fprintf(stderr, "fsp_rx_handle_file_hashes cannot read  file_hash for entry %ld: %s\n", i, entry->name);
+            return -1;
+        }
         // cross check file_hash entry->file_hash
-        if ( memcmp(file_hash, entry->file_hash, SHA256_DIGEST_LENGTH) != 0) return -1;
+        if ( memcmp(file_hash, entry->file_hash, SHA256_DIGEST_LENGTH) != 0) {
+            fprintf(stderr, "fsp_rx_handle_file_hashes hash not matching file_hash for entry %ld: %s\n", i, entry->name);
+            return -1;
+        }
 
         // 5️ Read number of chunks (uint64_t, network byte order) - NOT ZERO IF REAL DATA & cross check
         uint64_t num_chunks_be;
-        if (fsp_rx_read_full(fp, &num_chunks_be, sizeof(num_chunks_be)) < 0) return -1;
+        if (fsp_rx_read_full(fp, &num_chunks_be, sizeof(num_chunks_be)) < 0) {
+            fprintf(stderr, "fsp_rx_handle_file_hashes cannot read num_chunks %ld: %s\n", i, entry->name);
+            return -1;
+        }
         uint64_t num_chunks = be64toh(num_chunks_be);
-        if (entry->num_chunks != num_chunks) return -1;
+        if (entry->num_chunks != num_chunks) {
+            fprintf(stderr, "fsp_rx_handle_file_hashes num_chunks not matching for %ld: %s\n", i, entry->name);
+            return -1;
+        }
     
 
         // Optional safety: impose maximum number of chunks
@@ -664,15 +700,20 @@ static int fsp_rx_handle_file_hashes(fsp_receiver_state_t *rx, FILE *fp) {
         // 6️ Allocate chunk hashes array if needed
         if (num_chunks > 0) {
             unsigned char *chunk_hashes = malloc(num_chunks * SHA256_DIGEST_LENGTH);
-            if (!chunk_hashes) return -1;            
+            if (!chunk_hashes) {
+                fprintf(stderr, "fsp_rx_handle_file_hashes cannot malloc %ld: %s\n", i, entry->name);
+                return -1;            
+            }
 
             if (fsp_rx_read_full(fp, chunk_hashes, num_chunks * SHA256_DIGEST_LENGTH) < 0) {
+                fprintf(stderr, "fsp_rx_handle_file_hashes cannot fsp_rx_read_full %ld: %s\n", i, entry->name);
                 free(chunk_hashes);
                 return -1;
             }
 
             // Cross-check against metadata copy
             if (memcmp(chunk_hashes, entry->chunk_hashes, num_chunks * SHA256_DIGEST_LENGTH) != 0) {
+                fprintf(stderr, "fsp_rx_handle_file_hashes cannot match chunk hashes %ld: %s\n", i, entry->name);
                 free(chunk_hashes);
                 return -1;
             }
