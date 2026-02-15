@@ -177,6 +177,36 @@ static int fsp_rx_stat_files(fsp_receiver_state_t *rx, FILE *fp) {
 }
 
 
+
+static int mkdir_p(const char *path, mode_t mode) {
+    char tmp[PATH_MAX];
+    char *p;
+    
+    if (!path || strlen(path) >= sizeof(tmp)) {
+        errno = ENAMETOOLONG;
+        return -1;
+    }
+
+    snprintf(tmp, sizeof(tmp), "%s", path);
+
+    for (p = tmp + 1; *p; p++) {
+        if (*p == '/') {
+            *p = '\0';
+            if (mkdir(tmp, mode) < 0 && errno != EEXIST) {
+                return -1;
+            }
+            *p = '/';
+        }
+    }
+
+    if (mkdir(tmp, mode) < 0 && errno != EEXIST)
+        return -1;
+
+    return 0;
+}
+
+
+
 static int fsp_rx_handle_idle(fsp_receiver_state_t *rx, FILE *fp) {
     char line[PATH_MAX + 128];
     if (fsp_rx_readline(fp, line, sizeof(line)) < 0) {
@@ -201,10 +231,10 @@ static int fsp_rx_handle_idle(fsp_receiver_state_t *rx, FILE *fp) {
         char targetdir[PATH_MAX+3];
         snprintf(targetdir, sizeof(targetdir), "%s/%s", rx->target_path, rx->current_dir);
         targetdir[PATH_MAX-1] = '\0';
-        if (mkdir(targetdir, 0755) < 0) {
+        if (mkdir_p(targetdir, 0755) < 0) {
             if (errno != EEXIST) {
-                perror("mkdir");
-                fprintf(stderr,"fsp_rx_handle_idle, DIRECTORY cannot be created \n");
+                fprintf(stderr,"fsp_rx_handle_idle, DIRECTORY cannot be created for %s\n", targetdir);
+                perror("mkdir_p");                
                 return -1;
             }
         }
@@ -677,7 +707,7 @@ static int fsp_rx_handle_file_hashes(fsp_receiver_state_t *rx, FILE *fp) {
             return -1;
         }
         // cross check file_hash entry->file_hash
-        if ( memcmp(file_hash, entry->file_hash, SHA256_DIGEST_LENGTH) != 0) {
+        if ( size > 0 && memcmp(file_hash, entry->file_hash, SHA256_DIGEST_LENGTH) != 0) {
             fprintf(stderr, "fsp_rx_handle_file_hashes hash not matching file_hash for entry %ld: %s\n", i, entry->name);
             return -1;
         }
