@@ -141,11 +141,14 @@ static int fsp_rx_handle_mode(fsp_receiver_state_t *rx, FILE *fp) {
 
 static int fsp_rx_stat_bytes(fsp_receiver_state_t *rx, FILE *fp) {
     char line[PATH_MAX + 128];
-    if (fsp_rx_readline(fp, line, sizeof(line)) < 0) return -1;
+    if (fsp_rx_readline(fp, line, sizeof(line)) < 0) {
+        fprintf(stderr,"fsp_rx_stat_bytes, no data error\n");
+        return -1;
+    }
 
     size_t count = 0;
     if (sscanf(line, "STAT_BYTES: %zu", &count) != 1) {
-        fprintf(stderr, "Expected STAT_BYTES: N, got: %s\n", line);
+        fprintf(stderr, "fsp_rx_stat_bytes, waiting for STAT_BYTES: N, got: %s\n", line);
         return -1;
     }
     rx->expected_total_bytes = count;
@@ -156,11 +159,14 @@ static int fsp_rx_stat_bytes(fsp_receiver_state_t *rx, FILE *fp) {
 
 static int fsp_rx_stat_files(fsp_receiver_state_t *rx, FILE *fp) {
     char line[PATH_MAX + 128];
-    if (fsp_rx_readline(fp, line, sizeof(line)) < 0) return -1;
+    if (fsp_rx_readline(fp, line, sizeof(line)) < 0) {
+        fprintf(stderr,"fsp_rx_stat_files, no data error\n");
+        return -1;
+    }
 
     size_t count = 0;
     if (sscanf(line, "STAT_FILES: %zu", &count) != 1) {
-        fprintf(stderr, "Expected STAT_FILES: N, got: %s\n", line);
+        fprintf(stderr, "fsp_rx_stat_files, waiting for STAT_FILES: N, got: %s\n", line);
         return -1;
     }
     rx->expected_total_files = count;
@@ -173,7 +179,10 @@ static int fsp_rx_stat_files(fsp_receiver_state_t *rx, FILE *fp) {
 
 static int fsp_rx_handle_idle(fsp_receiver_state_t *rx, FILE *fp) {
     char line[PATH_MAX + 128];
-    if (fsp_rx_readline(fp, line, sizeof(line)) < 0) return -1;
+    if (fsp_rx_readline(fp, line, sizeof(line)) < 0) {
+        fprintf(stderr,"fsp_rx_handle_idle, no data error\n");
+        return -1;
+    } 
 
      // Skip empty lines
     char *p = line;
@@ -195,6 +204,7 @@ static int fsp_rx_handle_idle(fsp_receiver_state_t *rx, FILE *fp) {
         if (mkdir(targetdir, 0755) < 0) {
             if (errno != EEXIST) {
                 perror("mkdir");
+                fprintf(stderr,"fsp_rx_handle_idle, DIRECTORY cannot be created \n");
                 return -1;
             }
         }
@@ -218,10 +228,13 @@ static int fsp_rx_handle_idle(fsp_receiver_state_t *rx, FILE *fp) {
 
 static int fsp_rx_handle_file_list(fsp_receiver_state_t *rx, FILE *fp) {
     char line[128];
-    if (fsp_rx_readline(fp, line, sizeof(line)) < 0) return -1;
+    if (fsp_rx_readline(fp, line, sizeof(line)) < 0) {
+        fprintf(stderr,"fsp_rx_handle_file_list, no data error\n");
+        return -1;
+    }
 
     if (strcmp(line, "FILE_LIST") != 0) {
-        fprintf(stderr, "Expected FILE_LIST, got: %s\n", line);
+        fprintf(stderr, "fsp_rx_handle_file_list, waiting for FILE_LIST, got: %s\n", line);
         return -1;
     }
 
@@ -232,16 +245,19 @@ static int fsp_rx_handle_file_list(fsp_receiver_state_t *rx, FILE *fp) {
 
 static int fsp_rx_handle_file_count(fsp_receiver_state_t *rx, FILE *fp) {
     char line[128];
-    if (fsp_rx_readline(fp, line, sizeof(line)) < 0) return -1;
+    if (fsp_rx_readline(fp, line, sizeof(line)) < 0) {
+        fprintf(stderr,"fsp_rx_handle_file_count, no data error\n");
+        return -1;
+    }
 
     size_t count = 0;
     if (sscanf(line, "FILES: %zu", &count) != 1) {
-        fprintf(stderr, "Expected FILES: N, got: %s\n", line);
+        fprintf(stderr, "fsp_rx_handle_file_count, waiting for FILES: N, got: %s\n", line);
         return -1;
     }
 
     if ( count > FSP_MAX_FILES_PER_LIST ) {
-        fprintf(stderr, "Attempt to push more files than FSP_MAX_FILES_PER_LIST\n");
+        fprintf(stderr, "fsp_rx_handle_file_count, attempt to push more files than FSP_MAX_FILES_PER_LIST\n");
         return -1;
     }
 
@@ -253,6 +269,7 @@ static int fsp_rx_handle_file_count(fsp_receiver_state_t *rx, FILE *fp) {
         fsp_file_entry_t *new_entries = (fsp_file_entry_t*)realloc(rx->entries, count * sizeof(fsp_file_entry_t));
         if (!new_entries) {
             perror("realloc");
+            fprintf(stderr, "fsp_rx_handle_file_count, cannot realloc entries\n");
             return -1;
         }
         rx->entries = new_entries;
