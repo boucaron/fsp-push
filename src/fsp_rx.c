@@ -464,7 +464,7 @@ static int fsp_rx_handle_chunked_file(fsp_receiver_state_t *rx,
         uint64_t processed = 0;
 
         ret = EVP_DigestInit_ex(chunk_ctx, EVP_sha256(), NULL);
-        if ( ret == 1 ) {
+        if ( ret != 1 ) {
             fprintf(stderr,"fsp_rx_handle_chunked_file EVP_DigestInit_ex failed\n");
             return -1;
         }
