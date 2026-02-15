@@ -19,3 +19,8 @@ timespec_diff_sec(struct timespec a, struct timespec b)
 #define ANSI_MAGENTA "\033[35m"
 
 
+// Number of files before triggering an update
+#define THRESHOLD_FILES 100
+// Number of MB before triggering an update
+#define THRESHOLD_DATA 10ULL
+

@@ -18,9 +18,9 @@ void fsp_file_processor_progressbar(fsp_walker_state_t *state) {
      /* Throttle updates:
        - every 100 files
        - or every 10 MB */
-    int files_trigger = (state->total_files % 100) == 0;
+    int files_trigger = (state->total_files % THRESHOLD_FILES) == 0;
     int bytes_trigger = 
-        state->total_bytes >= state->last_speed_bytes + (10ULL << 20);
+        state->total_bytes >= state->last_speed_bytes + (THRESHOLD_DATA << 20);
 
     if (!files_trigger && !bytes_trigger)
         return;

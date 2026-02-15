@@ -16,9 +16,9 @@ void fsp_receiver_progressbar(fsp_receiver_state_t *rx)
     /* Throttle:
        - every 100 files
        - or every 10 MB */
-    int files_trigger = (rx->total_files % 100) == 0;
+    int files_trigger = (rx->total_files % THRESHOLD_FILES) == 0;
     int bytes_trigger =
-        rx->total_bytes >= rx->last_speed_bytes + (10ULL << 20);
+        rx->total_bytes >= rx->last_speed_bytes + (THRESHOLD_DATA<< 20);
 
     if (!files_trigger && !bytes_trigger)
         return;
