@@ -136,4 +136,4 @@ static inline void fsp_receiver_free(fsp_receiver_state_t *rx) {
 int fsp_receiver_process_line(fsp_receiver_state_t *rx, FILE *fp);
 
 
-void fsp_receiver_progressbar(fsp_receiver_state_t *rx);
+void fsp_receiver_progressbar(fsp_receiver_state_t *rx, int force);

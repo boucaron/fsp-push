@@ -11,7 +11,7 @@
 
 
 // Progress Bar
-void fsp_receiver_progressbar(fsp_receiver_state_t *rx)
+void fsp_receiver_progressbar(fsp_receiver_state_t *rx, int force)
 {
     /* Throttle:
        - every 100 files
@@ -20,8 +20,10 @@ void fsp_receiver_progressbar(fsp_receiver_state_t *rx)
     int bytes_trigger =
         rx->total_bytes >= rx->last_speed_bytes + (THRESHOLD_DATA<< 20);
 
-    if (!files_trigger && !bytes_trigger)
-        return;
+    if ( force <= 0 ) {
+        if (!files_trigger && !bytes_trigger)
+            return;
+    }
 
     /* --- Update throughput ONLY on byte trigger --- */
     if (bytes_trigger) {
@@ -246,7 +248,8 @@ static int fsp_rx_handle_idle(fsp_receiver_state_t *rx, FILE *fp) {
 
     if (strcmp(line, "END") == 0) {
         rx->state = FSP_RX_DONE;
-        fprintf(stderr,"END found exiting nicely\n");
+        fsp_receiver_progressbar(rx,1);
+        fprintf(stderr,"\nEND found exiting nicely\n");
         exit(0);
         return 0;
     }
@@ -436,7 +439,7 @@ static int fsp_rx_handle_small_file(fsp_receiver_state_t *rx, fsp_file_entry_t *
 
         rx->total_bytes += n;
         remaining -= n;
-        fsp_receiver_progressbar(rx);
+        fsp_receiver_progressbar(rx,0);
 
         if (EVP_DigestUpdate(file_ctx, buf, n) != 1) {
             fprintf(stderr, "fsp_rx_handle_small_file, EVP_DigestUpdate failed\n");
@@ -517,7 +520,7 @@ static int fsp_rx_handle_chunked_file(fsp_receiver_state_t *rx,
             rx->total_bytes += n;
             processed += n;
 
-            fsp_receiver_progressbar(rx);
+            fsp_receiver_progressbar(rx,0);
 
             if (EVP_DigestUpdate(chunk_ctx, buf, n) != 1) {
                 EVP_MD_CTX_free(chunk_ctx);
@@ -766,7 +769,7 @@ static int fsp_rx_handle_file_hashes(fsp_receiver_state_t *rx, FILE *fp) {
 
     rx->files_received += file_received;
     rx->total_files += file_received;
-    fsp_receiver_progressbar(rx);
+    fsp_receiver_progressbar(rx,0);
 
     // Done with this batch, go back to idle to receive new directory or END
     rx->state = FSP_RX_IDLE;
@@ -802,6 +805,7 @@ int fsp_receiver_process_line(fsp_receiver_state_t *rx, FILE *fp) {
         case FSP_RX_EXPECT_FILE_HASHES:
             return fsp_rx_handle_file_hashes(rx, fp);
         case FSP_RX_DONE:
+            fsp_receiver_progressbar(rx,1);
             exit(0);
             return 0; // Already done
         default:
