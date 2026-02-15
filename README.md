@@ -50,6 +50,7 @@ The application layer only defines structure and integrity.
 - Per-file and per-chunk SHA-256 integrity  
 - Bounded corruption window (chunk-scoped)  
 - Transport-agnostic  
+- Efficient I/O through sufficiently large buffers to minimize system call overhead
 
 ---
 
