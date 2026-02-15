@@ -448,17 +448,26 @@ static int fsp_rx_handle_chunked_file(fsp_receiver_state_t *rx,
     if (!chunk_ctx || !merkle_ctx) {
         EVP_MD_CTX_free(chunk_ctx);
         EVP_MD_CTX_free(merkle_ctx);
+        fprintf(stderr,"fsp_rx_handle_chunked_file EVP_MD_CTX_new failed\n");
         return -1;
     }
 
-    EVP_DigestInit_ex(merkle_ctx, EVP_sha256(), NULL);
+    int ret = EVP_DigestInit_ex(merkle_ctx, EVP_sha256(), NULL);
+    if ( ret != 1 ) {
+         fprintf(stderr,"fsp_rx_handle_chunked_file EVP_DigestInit_ex failed\n");
+         return -1;
+    }
     entry->num_chunks = 0;
 
     while (remaining > 0) {
         uint64_t chunk_bytes = remaining < FSP_CHUNK_SIZE ? remaining : FSP_CHUNK_SIZE;
         uint64_t processed = 0;
 
-        EVP_DigestInit_ex(chunk_ctx, EVP_sha256(), NULL);
+        ret = EVP_DigestInit_ex(chunk_ctx, EVP_sha256(), NULL);
+        if ( ret == 1 ) {
+            fprintf(stderr,"fsp_rx_handle_chunked_file EVP_DigestInit_ex failed\n");
+            return -1;
+        }
 
         while (processed < chunk_bytes) {
             size_t to_read = buf_size;
@@ -468,7 +477,7 @@ static int fsp_rx_handle_chunked_file(fsp_receiver_state_t *rx,
             size_t n = fread(buf, 1, to_read, fp);
             if (n == 0) {
                 if (ferror(fp)) perror("fread");
-                else fprintf(stderr, "Unexpected EOF in chunk\n");
+                else fprintf(stderr, "fsp_rx_handle_chunked_file, Unexpected EOF in chunk\n");
 
                 EVP_MD_CTX_free(chunk_ctx);
                 EVP_MD_CTX_free(merkle_ctx);
@@ -483,6 +492,7 @@ static int fsp_rx_handle_chunked_file(fsp_receiver_state_t *rx,
             if (EVP_DigestUpdate(chunk_ctx, buf, n) != 1) {
                 EVP_MD_CTX_free(chunk_ctx);
                 EVP_MD_CTX_free(merkle_ctx);
+                fprintf(stderr, "fsp_rx_handle_chunked_file, EVP_DigestUpdate failed\n");
                 return -1;
             }
 
@@ -490,12 +500,17 @@ static int fsp_rx_handle_chunked_file(fsp_receiver_state_t *rx,
                 perror("fwrite");
                 EVP_MD_CTX_free(chunk_ctx);
                 EVP_MD_CTX_free(merkle_ctx);
+                fprintf(stderr, "fsp_rx_handle_chunked_file, fwrite failed\n");
                 return -1;
             }
         }
 
         uint8_t chunk_hash[SHA256_DIGEST_LENGTH];
-        EVP_DigestFinal_ex(chunk_ctx, chunk_hash, NULL);
+        ret = EVP_DigestFinal_ex(chunk_ctx, chunk_hash, NULL);
+        if ( ret != 1 ) {
+            fprintf(stderr, "fsp_rx_handle_chunked_file, EVP_DigestFinal_ex failed\n");
+            return -1;
+        }
 
         // Ensure capacity for chunk hashes
         if (entry->num_chunks >= entry->cap_chunks) {
@@ -506,6 +521,7 @@ static int fsp_rx_handle_chunked_file(fsp_receiver_state_t *rx,
                 perror("realloc chunk_hashes");
                 EVP_MD_CTX_free(chunk_ctx);
                 EVP_MD_CTX_free(merkle_ctx);
+                fprintf(stderr, "fsp_rx_handle_chunked_file, realloc failed\n");
                 return -1;
             }
             entry->chunk_hashes = tmp;
@@ -517,13 +533,21 @@ static int fsp_rx_handle_chunked_file(fsp_receiver_state_t *rx,
         entry->num_chunks++;
 
         // Update Merkle Level 0 hash
-        EVP_DigestUpdate(merkle_ctx, chunk_hash, SHA256_DIGEST_LENGTH);
+        ret = EVP_DigestUpdate(merkle_ctx, chunk_hash, SHA256_DIGEST_LENGTH);
+        if ( ret != 1 ) {
+            fprintf(stderr, "fsp_rx_handle_chunked_file, EVP_DigestUpdate failed\n");
+            return -1;
+        }
 
         remaining -= chunk_bytes;
     }
 
     // Final Merkle hash stored in entry->file_hash
-    EVP_DigestFinal_ex(merkle_ctx, entry->file_hash, NULL);
+    ret = EVP_DigestFinal_ex(merkle_ctx, entry->file_hash, NULL);
+    if ( ret != 1 ) {
+        fprintf(stderr, "fsp_rx_handle_chunked_file, EVP_DigestFinal_ex failed\n");
+        return -1;
+    }
 
     EVP_MD_CTX_free(chunk_ctx);
     EVP_MD_CTX_free(merkle_ctx);
