@@ -3,7 +3,7 @@
 #include <stdint.h>
 
 #define FSP_MAGIC   0x46535031  // "FSP1"
-#define FSP_VERSION 2
+#define FSP_VERSION 0
 
 // Commands: TODO REMOVE
 #define FSP_CMD_MKDIR     0x01

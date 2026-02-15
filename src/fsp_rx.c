@@ -95,9 +95,19 @@ void fsp_receiver_progressbar(fsp_receiver_state_t *rx)
 // -----------------------------------------------------------------------------
 static int fsp_rx_handle_version(fsp_receiver_state_t *rx, FILE *fp) {
     char line[64];
-    if (fsp_rx_readline(fp, line, sizeof(line)) < 0) return -1;
+    if (fsp_rx_readline(fp, line, sizeof(line)) < 0) {
+        fprintf(stderr,"fsp_rx_handle_version, no data error\n");
+        return -1;
+    }
 
-    if (sscanf(line, "VERSION: %d", &rx->version) != 1) return -1;
+    if (sscanf(line, "VERSION: %d", &rx->version) != 1) {
+        fprintf(stderr,"fsp_rx_handle_version, waiting for VERSION: N\n");
+        return -1;
+    }
+    if ( rx->version != FSP_VERSION) {
+        fprintf(stderr, "fsp_rx_handle_version unsupported version %d\n", rx->version);
+        return -1;
+    }
 
     rx->state = FSP_RX_EXPECT_MODE;
     return 0;
@@ -105,9 +115,15 @@ static int fsp_rx_handle_version(fsp_receiver_state_t *rx, FILE *fp) {
 
 static int fsp_rx_handle_mode(fsp_receiver_state_t *rx, FILE *fp) {
     char line[PATH_MAX + 128];
-    if (fsp_rx_readline(fp, line, sizeof(line)) < 0) return -1;
+    if (fsp_rx_readline(fp, line, sizeof(line)) < 0) {
+        fprintf(stderr,"fsp_rx_handle_mode, no data error\n");
+        return -1;
+    }
 
-    if (strncmp(line, "MODE: ", 6) != 0) return -1;
+    if (strncmp(line, "MODE: ", 6) != 0) {
+        fprintf(stderr,"fsp_rx_handle_mode, waiting for MODE: N\n");
+        return -1;
+    }
 
     if (strcmp(line+6, "overwrite") == 0) rx->mode = FSP_OVERWRITE_ALWAYS;
     else if (strcmp(line+6, "skip") == 0) rx->mode = FSP_SKIP_IF_EXISTS;
