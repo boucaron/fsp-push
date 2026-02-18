@@ -401,8 +401,10 @@ static int fsp_rx_handle_file_metadata(fsp_receiver_state_t *rx, FILE *fp) {
 
 
         // DEBUG
-        fprintf(stderr, "fsp_rx_handle_file_metadata - Received file: %s (%lu bytes, %lu chunks)\n", 
-            entry->name, entry->size, entry->num_chunks);
+        if (  rx->verbose == 1 ) {
+            fprintf(stderr, "fsp_rx_handle_file_metadata - Received file: %s (%lu bytes, %lu chunks)\n", 
+                entry->name, entry->size, entry->num_chunks);
+        }
     }
 
     // Move to next state: file data
@@ -767,8 +769,10 @@ static int fsp_rx_handle_file_hashes(fsp_receiver_state_t *rx, FILE *fp) {
 
 
         // DEBUG
-        fprintf(stderr, "fsp_rx_handle_file_hashes - Cross check OK : %s (%lu bytes, %lu chunks)\n", 
-            entry->name, entry->size, entry->num_chunks);
+        if (  rx->verbose == 1 ) {
+            fprintf(stderr, "fsp_rx_handle_file_hashes - Cross check OK : %s (%lu bytes, %lu chunks)\n", 
+                entry->name, entry->size, entry->num_chunks);
+        }
        
         // Eveything is fine and cross checked        
         file_received++;

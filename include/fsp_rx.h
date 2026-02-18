@@ -69,6 +69,9 @@ typedef struct fsp_receiver_state {
     struct timespec last_speed_ts;
     double last_throughput;
 
+
+    uint8_t verbose;
+
 } fsp_receiver_state_t;
 
 

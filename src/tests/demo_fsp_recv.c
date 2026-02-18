@@ -47,6 +47,7 @@ int main(int argc, char **argv) {
         free(state.file_buf);
         return -1;
     }
+    state.verbose = 0; // Not verbose
 
 
 #ifdef _WIN32
