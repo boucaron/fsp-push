@@ -26,10 +26,10 @@ static void usage(const char *prog) {
         "usage: %s [--mode MODE] <dest-root>\n"
         "\n"
         "Modes:\n"
-        "  overwrite   Always overwrite existing files (default)\n"
-        "  skip        Skip files if they already exist\n"
-        "  hash        Overwrite only if final SHA256 differs\n"
-        "  fail        Fail if file already exists\n"
+        "  append      Default: Add only, never overwrite\n"
+        "  update      Missing file create, Exists: same hash skip, different hash overwrite atomically\n"
+        "  safe        Missing file create, Exists: same hash skip, different hash abort entire stream\n"
+        "  force       Always overwrite, Ignore existing content\n"
         "\n"
         "Version: NA\n"
         "(c) 2026 - Julien BOUCARON\n"
@@ -116,7 +116,7 @@ static int open_dest_root(const char *path, char *out_realpath, size_t out_sz) {
 
 
 int main(int argc, char **argv) {
-    fsp_mode_t cli_mode = FSP_OVERWRITE_ALWAYS;    
+    fsp_mode_t cli_mode = FSP_APPEND;    
 
     int opt;
     while ((opt = getopt_long(argc, argv, "m:", long_opts, NULL)) != -1) {
@@ -230,10 +230,10 @@ int main(int argc, char **argv) {
                 mode, fsp_mode_to_string((fsp_mode_t)mode));
 
             switch (mode) {
-            case FSP_OVERWRITE_ALWAYS:
-            case FSP_SKIP_IF_EXISTS:
-            case FSP_OVERWRITE_IF_HASH_DIFFERS:
-            case FSP_FAIL_IF_EXISTS:
+            case FSP_APPEND:
+            case FSP_UPDATE:
+            case FSP_SAFE:
+            case FSP_FORCE:
                 current_mode = (fsp_mode_t)mode;
                 break;
             default:

@@ -127,10 +127,10 @@ static int fsp_rx_handle_mode(fsp_receiver_state_t *rx, FILE *fp) {
         return -1;
     }
 
-    if (strcmp(line+6, "overwrite") == 0) rx->mode = FSP_OVERWRITE_ALWAYS;
-    else if (strcmp(line+6, "skip") == 0) rx->mode = FSP_SKIP_IF_EXISTS;
-    else if (strcmp(line+6, "hash") == 0) rx->mode = FSP_OVERWRITE_IF_HASH_DIFFERS;
-    else if (strcmp(line+6, "fail") == 0) rx->mode = FSP_FAIL_IF_EXISTS;
+    if (strcmp(line+6, "append") == 0) rx->mode = FSP_APPEND;
+    else if (strcmp(line+6, "update") == 0) rx->mode = FSP_UPDATE;
+    else if (strcmp(line+6, "safe") == 0) rx->mode = FSP_SAFE;
+    else if (strcmp(line+6, "force") == 0) rx->mode = FSP_FORCE;
     else {
          fprintf(stderr, "fsp_rx_handle_mode: unknown mode %s", line);
          return -1;

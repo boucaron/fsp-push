@@ -15,10 +15,10 @@
 
 // Modes
 typedef enum {
-    FSP_OVERWRITE_ALWAYS            = 0x01,
-    FSP_SKIP_IF_EXISTS              = 0x02,
-    FSP_OVERWRITE_IF_HASH_DIFFERS   = 0x03,
-    FSP_FAIL_IF_EXISTS              = 0x04
+    FSP_APPEND                      = 0x01, // Default mode: append only, never overwrite
+    FSP_UPDATE                      = 0x02, // Missing create file, same hash skip, different hash overwrite atomically
+    FSP_SAFE                        = 0x03, // Missing create file, same hash skip, different hash abort entire stream
+    FSP_FORCE                       = 0x04  // Always overwrite, ignore existing stuff
 } fsp_mode_t;
 
 // Limits

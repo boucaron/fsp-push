@@ -100,7 +100,7 @@ static int check_source_dir(const char *path) {
 /* --- main --- */
 
 int main(int argc, char **argv) {
-    fsp_mode_t cli_mode = FSP_OVERWRITE_ALWAYS;  
+    fsp_mode_t cli_mode = FSP_APPEND;  
     int dry_run = 0;  
 
     int opt;

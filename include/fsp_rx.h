@@ -101,7 +101,7 @@ static inline int fsp_rx_readline(FILE *fp, char *buf, size_t maxlen) {
 static inline void fsp_receiver_init(fsp_receiver_state_t *rx) {
     memset(rx, 0, sizeof(*rx));
     rx->state = FSP_RX_EXPECT_VERSION;
-    rx->mode = FSP_SKIP_IF_EXISTS;
+    rx->mode = FSP_APPEND;
 }
 
 
