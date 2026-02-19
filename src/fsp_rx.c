@@ -127,8 +127,7 @@ static int fsp_rx_handle_mode(fsp_receiver_state_t *rx, FILE *fp) {
         return -1;
     }
 
-    if (strcmp(line+6, "append") == 0) rx->mode = FSP_APPEND;
-    else if (strcmp(line+6, "update") == 0) rx->mode = FSP_UPDATE;
+    if (strcmp(line+6, "append") == 0) rx->mode = FSP_APPEND;    
     else if (strcmp(line+6, "safe") == 0) rx->mode = FSP_SAFE;
     else if (strcmp(line+6, "force") == 0) rx->mode = FSP_FORCE;
     else {
@@ -414,7 +413,8 @@ static int fsp_rx_handle_file_metadata(fsp_receiver_state_t *rx, FILE *fp) {
 
 
 // The caller is responsible for closing the out file
-static int fsp_rx_handle_small_file(fsp_receiver_state_t *rx, fsp_file_entry_t *entry, FILE *fp, FILE *out) {
+static int fsp_rx_handle_small_file(fsp_receiver_state_t *rx, 
+                fsp_file_entry_t *entry, FILE *fp, FILE *out, int fileexist) {
 
     EVP_MD_CTX *file_ctx = EVP_MD_CTX_new();
     if (!file_ctx) {
@@ -456,13 +456,18 @@ static int fsp_rx_handle_small_file(fsp_receiver_state_t *rx, fsp_file_entry_t *
             return -1;
         }
 
-        size_t w = fwrite(buf, 1, n, out);
-        if (w != n) {
-            perror("fwrite");
-            fprintf(stderr, "fsp_rx_handle_small_file, fwrite failed\n");
-            EVP_MD_CTX_free(file_ctx);
-            return -1;
+        if ( fileexist == 1 && rx->mode == FSP_APPEND ) {
+            // Skip file exists
         }
+        else {
+            size_t w = fwrite(buf, 1, n, out);
+            if (w != n) {
+                perror("fwrite");
+                fprintf(stderr, "fsp_rx_handle_small_file, fwrite failed\n");
+                EVP_MD_CTX_free(file_ctx);
+                return -1;
+            }
+        }   
     }
 
     // Store final SHA256 hash
@@ -480,7 +485,8 @@ static int fsp_rx_handle_small_file(fsp_receiver_state_t *rx, fsp_file_entry_t *
 static int fsp_rx_handle_chunked_file(fsp_receiver_state_t *rx,
                                       fsp_file_entry_t *entry,
                                       FILE *fp,
-                                      FILE *out) {
+                                      FILE *out,
+                                      int fileexist) {
     uint8_t *buf = rx->proto_buf;
     size_t buf_size = rx->proto_buf_size;
     uint64_t remaining = entry->size;
@@ -538,7 +544,10 @@ static int fsp_rx_handle_chunked_file(fsp_receiver_state_t *rx,
                 return -1;
             }
 
-            if (fwrite(buf, 1, n, out) != n) {
+            if ( fileexist == 1 && rx->mode == FSP_APPEND ) {
+                // SKIP the write
+            }
+            else if (fwrite(buf, 1, n, out) != n) {
                 perror("fwrite");
                 EVP_MD_CTX_free(chunk_ctx);
                 EVP_MD_CTX_free(merkle_ctx);
@@ -606,6 +615,7 @@ static int fsp_rx_handle_file_data(fsp_receiver_state_t *rx, FILE *fp) {
         fsp_file_entry_t *entry = &rx->entries[i];
 
         if (entry->size == 0) continue; // skip empty files
+
         char filepath[PATH_MAX+512];
         if ( strlen(rx->current_dir) > 0 ) {
             snprintf(filepath, sizeof(filepath), "%s/%s/%s", rx->target_path, rx->current_dir, entry->name);
@@ -613,23 +623,70 @@ static int fsp_rx_handle_file_data(fsp_receiver_state_t *rx, FILE *fp) {
             snprintf(filepath, sizeof(filepath), "%s/%s", rx->target_path, entry->name);
         }
 
-        FILE *out = fopen(filepath, "wb");
-        if (!out) {
-            perror("fopen");
-            fprintf(stderr,"fsp_rx_handle_file_data, fopen failed for %s\n", filepath);
+        int fileexist = 0;
+        struct stat st;
+        if (stat(filepath, &st) == 0) {        
+            fileexist = 1;
+        } else {    
+            fileexist = 0;
+        }
+
+        FILE *out = NULL;
+        
+        char *orig_name = strrchr(filepath, '/');
+        if (!orig_name) {
+            fprintf(stderr, "Invalid path\n");
             return -1;
         }
+        orig_name++;  // points to basename
+
+        // Replace basename with ".tmp.XXXXXX"
+        size_t remaining = sizeof(filepath) - (orig_name - filepath);
+        if (remaining < strlen(".tmp.XXXXXX") + 1) {
+            fprintf(stderr, "Path buffer too small\n");
+            return -1;
+        }
+
+        snprintf(orig_name, remaining, ".tmp.XXXXXX");
+
+        int fd = mkstemp(filepath);
+        if (fd < 0) {
+            perror("mkstemp");
+            return -1;
+        }
+
+        fchmod(fd, 0644);
+
+        out = fdopen(fd, "wb");
+        if (!out) {
+            perror("fdopen");
+            fprintf(stderr,"fsp_rx_handle_file_data, fopen failed for %s\n", filepath);
+            close(fd);
+            unlink(filepath);
+            return -1;
+        }
+
+        // Extract temp filename (basename only)
+        char *tmpname = strrchr(filepath, '/');
+        tmpname++;  
+
+        snprintf(entry->current_tempfile,
+                sizeof(entry->current_tempfile),
+                "%s",
+                tmpname);                           
        
         if (entry->size > FSP_CHUNK_SIZE) {
-           if (fsp_rx_handle_chunked_file(rx, entry, fp, out) < 0) {
+           if (fsp_rx_handle_chunked_file(rx, entry, fp, out, fileexist) < 0) {                
                 fclose(out);
-                fprintf(stderr,"fsp_rx_handle_file_data, fsp_rx_handle_chunked_file filepath failed %s\n", filepath);
+                unlink(filepath);                
+                fprintf(stderr,"fsp_rx_handle_file_data, fsp_rx_handle_chunked_file filepath failed %s\n", filepath);                
                 return -1;
             }
         } else {
-             if (fsp_rx_handle_small_file(rx, entry, fp, out) < 0) {
-                fprintf(stderr,"fsp_rx_handle_file_data, fsp_rx_handle_small_file filepath failed %s\n", filepath);
+             if (fsp_rx_handle_small_file(rx, entry, fp, out, fileexist) < 0) {                
                 fclose(out);
+                unlink(filepath);                
+                fprintf(stderr,"fsp_rx_handle_file_data, fsp_rx_handle_small_file filepath failed %s\n", filepath);                                
                 return -1;
             }            
         }
@@ -764,8 +821,49 @@ static int fsp_rx_handle_file_hashes(fsp_receiver_state_t *rx, FILE *fp) {
             free(chunk_hashes);
         }         
 
-        // Optional: psychokouak mode, we reread the writen file
-        //  And we ensure that the SHA256 and the chunks are correct
+        
+        char filepath[PATH_MAX+512];
+        if ( strlen(rx->current_dir) > 0 ) {
+            snprintf(filepath, sizeof(filepath), "%s/%s/%s", rx->target_path, rx->current_dir, entry->name);
+        } else {
+            snprintf(filepath, sizeof(filepath), "%s/%s", rx->target_path, entry->name);
+        }
+        
+        int fileexist = 0;
+        struct stat st;
+        if (stat(filepath, &st) == 0) {        
+            fileexist = 1;
+        } else {    
+            fileexist = 0;
+        }
+
+         char temp_file[PATH_MAX+512];
+        if ( strlen(rx->current_dir) > 0 ) {
+            snprintf(temp_file, sizeof(temp_file), "%s/%s/%s", rx->target_path, rx->current_dir, entry->current_tempfile);
+        } else {
+            snprintf(temp_file, sizeof(temp_file), "%s/%s", rx->target_path, entry->current_tempfile);
+        }
+
+        if ( fileexist && rx->mode != FSP_FORCE ) {              
+            if ( rx->mode == FSP_APPEND ) {
+                // Just skip and remove the empty temp_file
+                unlink(temp_file);
+            } else if ( rx->mode == FSP_SAFE ) {
+                // Fails if the hash is not the same   
+                // TODO: Not yet supported
+                return -1;                          
+            }
+        }
+        else {
+            int r = rename(temp_file, filepath);
+            if ( r < 0 ) {
+                perror("rename");
+                fprintf(stderr, "fsp_rx_handle_file_hashes cannot rename the file %s", filepath);
+                unlink(temp_file);
+                return -1;
+            }
+        }
+       
 
 
         // DEBUG

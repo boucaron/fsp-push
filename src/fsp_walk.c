@@ -67,12 +67,23 @@ int fsp_walk(const char *root_path,
         fsp_bw_push(&state->protowritebuf, version, strlen(version));
         fsp_bw_flush(&state->protowritebuf);
 
-        const char *protomode = "MODE: overwrite\n";
-        fsp_bw_push(&state->protowritebuf, protomode, strlen(protomode));
+        char statbuf[128];
+        const char *protomode = "MODE: %s\n";
+        char *mode = NULL;
+        if ( state->mode == FSP_APPEND ) {
+            mode = "append";
+        } else if ( state->mode == FSP_FORCE ) {
+            mode = "force";
+        } else if ( state->mode == FSP_SAFE ) {
+            mode = "safe";
+        } else {
+            mode = "append";
+        }
+        int len = snprintf(statbuf, sizeof(statbuf), protomode, mode);
+        fsp_bw_push(&state->protowritebuf, statbuf, len);
         fsp_bw_flush(&state->protowritebuf);
 
-        char statbuf[128];
-        int len = snprintf(statbuf, sizeof(statbuf), "STAT_BYTES: %" PRIu64 "\n",
+        len = snprintf(statbuf, sizeof(statbuf), "STAT_BYTES: %" PRIu64 "\n",
                         state->dry_run->file_total_size);
                         
         if (len < 0 || (size_t)len >= sizeof(statbuf)) {

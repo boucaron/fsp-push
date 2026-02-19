@@ -17,8 +17,6 @@ static inline int fsp_parse_mode(const char *s, fsp_mode_t *out) {
 
     if (strcmp(s, "append") == 0) {
         *out = FSP_APPEND;
-    } else if (strcmp(s, "update") == 0) {
-        *out = FSP_UPDATE;
     } else if (strcmp(s, "safe") == 0) {
         *out = FSP_SAFE;
     } else if (strcmp(s, "force") == 0) {

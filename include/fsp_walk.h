@@ -29,6 +29,8 @@ typedef struct {
     uint64_t num_chunks;           // Chunks actually used
     uint64_t cap_chunks;           // Allocated capacity of chunk_hashes
     unsigned char (*chunk_hashes)[SHA256_DIGEST_LENGTH]; // Dynamic array of chunk hashes
+    
+    char    current_tempfile[NAME_MAX + 1];
 } fsp_file_entry_t;
 
 /** Represents a single directory in the DFS walker */

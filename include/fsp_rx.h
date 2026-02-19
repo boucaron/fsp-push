@@ -45,7 +45,7 @@ typedef struct fsp_receiver_state {
 
     // Global protocol info
     int version;                      // VERSION: X
-    fsp_mode_t mode;                  // MODE: overwrite/skip/hash/fail
+    fsp_mode_t mode;                  // MODE: append/update/safe/force
 
     // Protocol FSM
     fsp_rx_state_t state;

@@ -230,8 +230,7 @@ int main(int argc, char **argv) {
                 mode, fsp_mode_to_string((fsp_mode_t)mode));
 
             switch (mode) {
-            case FSP_APPEND:
-            case FSP_UPDATE:
+            case FSP_APPEND:            
             case FSP_SAFE:
             case FSP_FORCE:
                 current_mode = (fsp_mode_t)mode;
