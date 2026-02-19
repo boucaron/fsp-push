@@ -70,13 +70,14 @@ int fsp_walk(const char *root_path,
         char statbuf[128];
         const char *protomode = "MODE: %s\n";
         char *mode = NULL;
-        if ( state->mode == FSP_APPEND ) {
+        if ( state->senderMode == FSP_APPEND ) {
             mode = "append";
-        } else if ( state->mode == FSP_FORCE ) {
+        } else if ( state->senderMode == FSP_FORCE ) {
             mode = "force";
-        } else if ( state->mode == FSP_SAFE ) {
+        } else if ( state->senderMode == FSP_SAFE ) {
             mode = "safe";
         } else {
+            // Safe defaults
             mode = "append";
         }
         int len = snprintf(statbuf, sizeof(statbuf), protomode, mode);

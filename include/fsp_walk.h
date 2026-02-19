@@ -102,6 +102,8 @@ typedef struct fsp_walker_state {
 
     // Mode of operation
     fsp_walker_mode_t mode;          // DRY_RUN or RUN
+    // Sender mode
+    fsp_mode_t senderMode; 
 
     // Optional: user pointer for callbacks
     void    *user_data;              // Could be sender context, etc.
