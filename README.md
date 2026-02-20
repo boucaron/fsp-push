@@ -1,62 +1,72 @@
-# FSP Push — FileStream Protocol (Push)
+# FSP — Forward Snapshot Protocol
 
-**FSP Push** is a simple, push-only streaming protocol for dumping filesystem contents over a reliable byte stream.
+**FSP** is a **fast, push-only protocol** for streaming filesystem snapshots over any reliable transport. It transfers **files and directories** in a **single forward stream** with **per-file SHA-256 integrity**, ensuring safety without application-level acknowledgments.  
 
-It is designed for fast, one-way transfers of **regular files and directories**.
-
-FSP Push is **not** a synchronization protocol.  
-It is a **dump-and-stream protocol**.
+> Think of it as a **streaming archive meets high-throughput file deployer** — simple, reliable, and transport-agnostic.  
 
 ---
 
-## Why FSP Push?
+## Summary
+FSP is:
 
-Many file transfer tools use application-level request/acknowledgment exchanges.
+- **High-throughput** — single linear stream with no app ACKs  
+- **Integrity-safe** — SHA-256 per file and per chunk  
+- **Fail-fast** — immediately stops transfers on corruption or errors  
+- **Transport-agnostic** — works over SSH, TCP, TLS, or local pipes  
+- **Snapshot-oriented** — atomic per-file commit prevents corruption  
+- **Files-and-directories only** — ignores permissions or special files  
+- **Efficient I/O** — large buffers reduce system calls and kernel context switches  
+- **Easy to monitor** — SSH stderr provides built-in progress reporting  
 
-For each file:
 
-1. Metadata is sent  
-2. The receiver acknowledges  
-3. The next file begins  
 
-On a link with 100 ms round-trip time:
+---
 
-- 10 small files  
-- 10 round trips  
-- 1 second of accumulated latency  
+## Why FSP?
 
-This delay occurs regardless of available bandwidth.
+Traditional file transfer tools use application-level request/acknowledgment cycles:
 
-TCP already provides:
+1. Send file metadata  
+2. Wait for receiver acknowledgment  
+3. Send file content  
 
-- reliable, ordered delivery  
-- congestion control  
-- flow control (backpressure)  
+On high-latency links (e.g., 100 ms RTT):
 
-FSP Push removes application-level acknowledgments entirely and operates as a single forward stream.
+- 10 small files → 10 round-trips → ~1 second wasted  
 
-The transport layer handles reliability and flow control.  
-The application layer only defines structure and integrity.
+Even on fast links, this adds unnecessary latency.  
+
+**FSP removes application-level ACKs entirely**, relying on the transport layer for:  
+
+- Reliable delivery  
+- Ordered streams  
+- Congestion and flow control  
+
+The application layer focuses **only on structure and integrity**, not back-and-forth messaging.  
 
 ---
 
 ## Design Principles
 
-- Single linear byte stream  
-- No application-level ACK/NACK  
-- Streaming-first design  
-- Minimal framing  
-- Deterministic behavior  
-- Per-file and per-chunk SHA-256 integrity  
-- Bounded corruption window (chunk-scoped)  
-- Transport-agnostic  
-- Efficient I/O through sufficiently large buffers to minimize system call overhead
+- **Single linear byte stream** — files flow forward continuously  
+- **No application-level ACK/NACK** — throughput-first design  
+- **Minimal framing** — efficient, deterministic behavior  
+- **Per-file and per-chunk SHA-256 integrity**  
+- **Bounded corruption window** — limited to individual chunks  
+- **Transport-agnostic** — works over TCP, SSH, TLS, etc.  
+- **Efficient I/O** — reads and writes data in **large blocks**, minimizing system calls and kernel context switches for high-speed transfers  
+- **Atomic per-file commit** — temp files are only moved into place after passing integrity checks  
+- **Fail-fast behavior** — transfer aborts immediately if any integrity check fails or unexpected error occurs  
+- **Files and directories only** — permissions, ownership, timestamps, and special files are ignored  
+
+> **Fail-fast explanation:**  
+> If a file fails SHA-256 verification, cannot be written, or a chunk is corrupted, FSP stops the transfer immediately. This ensures **no partially corrupted snapshot reaches the target**, keeping the destination consistent.  
 
 ---
 
 ## Protocol Model
 
-The stream is strictly ordered and consists of:
+The stream consists of **ordered frames**:  
 
 1. Directory metadata  
 2. File metadata  
@@ -64,103 +74,113 @@ The stream is strictly ordered and consists of:
 4. Embedded SHA-256 hashes  
 5. End-of-stream marker  
 
-Files are reconstructed in the exact order they are emitted.
-
-Large files may be divided into fixed-size chunks.  
-Each chunk may carry its own SHA-256 hash, limiting the corruption window to a bounded region.
-
-Integrity is verified at the receiver after content is written.
+- Files and directories are reconstructed **exactly in order**.  
+- Large files can be split into **fixed-size chunks**, each with its own SHA-256 hash.  
+- Integrity is verified **after writing each file**, limiting corruption impact.  
+- If any check fails, the **fail-fast mechanism aborts the transfer**, leaving the target clean.  
 
 ---
 
 ## Guarantees
 
-FSP Push provides:
+FSP provides:  
 
-- Ordered delivery (inherited from the transport)  
-- Complete file reconstruction  
-- Strong integrity verification via SHA-256  
-- Bounded corruption detection at chunk level  
+- Ordered delivery (via transport)  
+- Complete reconstruction of files and directories  
+- Strong integrity checks with SHA-256  
+- Bounded corruption detection at the chunk level  
+- Fail-fast behavior to prevent partial or corrupted snapshots  
 
-FSP Push does not provide resumability.  
-If the stream is interrupted, the transfer is restarted.
+**FSP does not support resumability**.  
+Interrupted transfers must be restarted.  
 
 ---
 
 ## Scope
 
-FSP Push:
+**FSP can:**  
+- Stream directories and regular files  
+- Embed metadata with file content  
+- Verify file integrity using SHA-256  
+- Operate over any reliable transport  
 
-- Transfers regular files and directories  
-- Streams metadata followed by content  
-- Verifies integrity using embedded SHA-256 hashes  
-- Relies on the transport layer for reliability  
-
-FSP Push does **not**:
-
-- Perform synchronization  
+**FSP does not:**  
+- Preserve or transfer permissions, ownership, or timestamps  
+- Handle symbolic links, device files, or other special file types  
+- Synchronize directories  
 - Compute deltas  
 - Retry individual files  
 - Negotiate capabilities mid-transfer  
-- Maintain a bidirectional control channel  
+- Maintain bidirectional control  
 
-If a transfer fails, it is restarted.
-
-Simplicity is intentional.
+Simplicity is intentional — one forward stream, verified at the receiver, and fails fast if anything goes wrong.  
 
 ---
 
 ## Transport
 
-FSP Push requires a reliable byte stream.
+FSP works over **any reliable byte stream**:
 
-### Over SSH
-
+### SSH
 ```bash
 fsp-send /data | ssh user@host fsp-recv /dest
 ```
 
-### Over plain TCP
+
+
+- **Progress Visibility:**  
+  When using SSH, **stderr output** shows a dry-run count of files and sizes, followed by per-file transfer progress.  
+  stdout remains the raw FSP stream, so sender and receiver progress can be observed **simultaneously in real-time**.  
+
+### TCP
 ```bash
 fsp-send /data | nc host 9000
 ```
 
-### Over TLS
+### TLS
 ```bash
 fsp-send /data | ncat --ssl host 9000
 ```
 
-Any reliable stream transport is suitable.
-
 ### With Compression
-Compression can be applied in the stream:
 ```bash
 fsp-send /data | gzip | ssh user@host "gzip -d | fsp-recv /dest"
 ```
 
+---
+
 ## Archive Usage
 
-FSP Push can also be used as a streaming archive format, similar in spirit to `tar`.
+FSP can also function as a **streaming archive**, similar in spirit to `tar`.  
 
-Because it is a linear, self-contained stream, it can be:
-
-- written to a file  
-- piped locally between processes  
-- stored and extracted later  
-
-Example:
+- Streams can be **written to files** or **piped between processes**  
+- Snapshots are **self-contained** and can be stored or restored later  
 
 ```bash
 fsp-send /data > dump.fsp
 fsp-recv /restore < dump.fsp
 ```
 
-Example with compression:
+With compression:
+
 ```bash
 fsp-send /data | zstd > dump.fsp.zst
 zstd -d dump.fsp.zst | fsp-recv - /restore
 ```
 
+---
 
+## CLI Commands
+
+```bash
+fsp-send [options] <directory>        # Push a directory snapshot
+fsp-recv [options] <destination>      # Receive and commit snapshot
+```
+
+**Storage Modes / Options:**  
+
+- `--append` → add new files, leave existing untouched  
+- `--force` → replace all files  
+- `--safe` → verify SHA-256; fail if existing file mismatches  
 
 
