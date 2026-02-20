@@ -26,12 +26,11 @@ static void usage(const char *prog) {
         "usage: %s [--mode MODE] <dest-root>\n"
         "\n"
         "Modes:\n"
-        "  append      Default: Add only, never overwrite\n"
-        "  update      Missing file create, Exists: same hash skip, different hash overwrite atomically\n"
+        "  append      Default: Add only, never overwrite\n"        
         "  safe        Missing file create, Exists: same hash skip, different hash abort entire stream\n"
         "  force       Always overwrite, Ignore existing content\n"
         "\n"
-        "Version: NA\n"
+        "Version: 0.1\n"
         "(c) 2026 - Julien BOUCARON\n"
         ,prog);
 }

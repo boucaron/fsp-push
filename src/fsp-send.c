@@ -1,6 +1,8 @@
 #include "fsp.h"
 #include "fsp_io.h"
 #include "fsp_opt.h"
+#include "fsp_walk.h"
+#include "fsp_file_processor.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,90 +14,52 @@
 
 #include <sys/stat.h>
 
+// ---------------------------
+// Callback implementation
+// ---------------------------
+int file_batching_callback(fsp_walker_state_t *state) {
+    if (!state || state->entries.num_files == 0) return 0;
+
+    // VERBOSE
+    /* fprintf(stderr, "Directory: %s\n", state->relpath); //Could use fullpath 
+    fprintf(stderr, "Depth: %d\n", state->current_depth);
+    for (size_t i = 0; i < state->entries.num_files; i++) {
+        fsp_file_entry_t *fe = &state->entries.files[i];
+        fprintf(stderr, "  File: %s (size: %" PRIu64 " bytes)\n",
+               fe->name, fe->size);
+    } */
+
+
+    // VERBOSE
+    // fprintf(stderr, "Batching start\n");
+    int ret = fsp_file_processor_process_directory(state);
+    // fprintf(stderr, "Batching end\n");
+    return ret;
+}
+
+
 static struct option long_opts[] = {
     { "mode", required_argument, 0, 'm' },
     { "dry-run", no_argument, 0, 'd'},
+    { "version", no_argument, 0, 'v'},
     { 0, 0, 0, 0 }
 };
 
 
 static void usage(const char *prog) {
     fprintf(stderr,
-        "usage: %s [--mode MODE] [--dry-run] <source-path>\n"
-        "\n"
+        "usage: %s [--mode MODE] [--dry-run] [--version] <source-path>\n"
+        "\n"        
         "Modes:\n"
-        "  overwrite   Always overwrite existing files (default)\n"
-        "  skip        Skip files if they already exist\n"
-        "  hash        Overwrite only if final SHA256 differs\n"
-        "  fail        Fail if file already exists\n"
+        "  append      Default: Add only, never overwrite\n"        
+        "  safe        Missing file create, Exists: same hash skip, different hash abort entire stream\n"
+        "  force       Always overwrite, Ignore existing content\n"
         "\n"
+        "Version: 0.1\n"
+        "(c) 2026 - Julien BOUCARON\n"
         , prog);
 }
 
-
-/* --- protocol helpers --- */
-
-static int send_header(int fd) {
-    if (fsp_write_u32_be(fd, FSP_MAGIC) != 0) return -1;
-    if (fsp_write_u16_be(fd, FSP_VERSION) != 0) return -1;
-    if (fsp_write_u16_be(fd, 0) != 0) return -1;  /* flags */
-    return 0;
-}
-
-static int send_set_mode(int fd, fsp_mode_t mode) {
-    uint8_t cmd = FSP_CMD_SET_MODE;
-    uint8_t m = (uint8_t)mode;
-
-    if (fsp_write_all(fd, &cmd, 1) != 0) return -1;
-    if (fsp_write_all(fd, &m, 1) != 0) return -1;
-
-    fprintf(stderr, "fsp-recv: SET_MODE %u (%s)\n",
-                mode, fsp_mode_to_string((fsp_mode_t)mode));
-    return 0;
-}
-
-
-static int send_empty_file_list(int fd) {
-    uint8_t cmd = FSP_CMD_FILE_LIST;
-
-    if (fsp_write_all(fd, &cmd, 1) != 0) return -1;
-
-    /* prefix_len = 0 */
-    if (fsp_write_u16_be(fd, 0) != 0) return -1;
-
-    /* count = 0 */
-    if (fsp_write_u32_be(fd, 0) != 0) return -1;
-
-    return 0;
-}
-
-static int send_end(int fd) {
-    uint8_t cmd = FSP_CMD_END;
-    return fsp_write_all(fd, &cmd, 1);
-}
-
-static int check_source_dir(const char *path) {
-    struct stat st;
-
-    if (stat(path, &st) != 0) {
-        fprintf(stderr, "fsp-send: cannot stat '%s': %s\n",
-                path, strerror(errno));
-        return -1;
-    }
-
-    if (!S_ISDIR(st.st_mode)) {
-        fprintf(stderr, "fsp-send: '%s' is not a directory\n", path);
-        return -1;
-    }
-
-    if (access(path, R_OK | X_OK) != 0) {
-        fprintf(stderr, "fsp-send: no permission to read/traverse '%s': %s\n",
-                path, strerror(errno));
-        return -1;
-    }
-
-    return 0;
-}
 
 /* --- main --- */
 
@@ -118,6 +82,10 @@ int main(int argc, char **argv) {
             dry_run = 1;
             break;
 
+        case 'v':
+            fprintf(stdout, "Version: 0.1\n");
+            return 0;
+
         default:
             usage(argv[0]);
             return 1;
@@ -138,32 +106,83 @@ int main(int argc, char **argv) {
 
     const char *source_path = argv[optind];
 
-    fprintf(stderr, "fsp-send: sending minimal test stream\n");
 
-    if (check_source_dir(source_path) != 0) {
+
+    // Initialize dry run stats
+    fsp_dry_run_stats dry_run_stats;
+    fsp_dry_run_reset(&dry_run_stats);
+    dry_run_stats.simulation_cfg.throughput = 50 * 1024 * 1024; // 50 MB/s
+    dry_run_stats.simulation_cfg.latencyRtt = 10.0;              // 10 ms
+
+    // Initialize walker state
+    fsp_walker_state_t state;
+    memset(&state, 0, sizeof(state));
+    state.dry_run    = &dry_run_stats;
+    state.max_depth  = FSP_MAX_WALK_DEPTH; // protocol limit
+    state.max_files  = FSP_MAX_FILES_PER_LIST;
+    state.max_bytes  = FSP_MAX_FILE_LIST_BYTES;
+    state.mode       = FSP_WALK_MODE_DRY_RUN;
+    state.senderMode = cli_mode; // APPEND, FORCE, SAFE
+    state.total_files = 0;
+    state.total_bytes = 0;
+    state.previous_total_bytes = 0;
+    clock_gettime(CLOCK_MONOTONIC, &state.last_speed_ts);
+    state.last_speed_bytes = 0;
+    state.last_throughput = 0; 
+    state.user_data  = &state;
+
+    // Allocate file buffer for hashing
+    state.file_buf_size = 1024 * 1024 * 16; // 16 MB
+    state.file_buf = malloc(state.file_buf_size);
+    if (!state.file_buf) {
+        fprintf(stderr, "Cannot allocate file buffer of size %zu\n", state.file_buf_size);
+        return 1;
+    }
+#ifdef _WIN32
+    _setmode(_fileno(stdout), _O_BINARY);    
+#endif    
+    int out_fd = fileno(stdout);
+    // Allocate protocol buffer
+    if ( fsp_bw_init(&state.protowritebuf, out_fd) != 0 ) {
+        fprintf(stderr, "Cannot allocate protocol write buffer of size %u", FSP_BW_CAP);
+        return 1;
+    } 
+
+    // Setup callbacks
+    fsp_walk_callbacks_t cbs;
+    memset(&cbs, 0, sizeof(cbs));
+    cbs.process_directory = file_batching_callback;
+    cbs.max_files     = FSP_MAX_FILES_PER_LIST;
+    cbs.max_bytes     = FSP_MAX_FILE_LIST_BYTES;
+    cbs.max_depth     = FSP_MAX_WALK_DEPTH;
+
+    fprintf(stderr, "Starting DRY_RUN on: %s\n", source_path);
+
+    int selected_mode = FSP_WALK_MODE_RUN;
+    if ( dry_run ) {
+        selected_mode = FSP_WALK_MODE_DRY_RUN;        
+    } 
+    state.mode = selected_mode;
+   
+
+    int ret = fsp_walk(source_path, &cbs, &state, selected_mode);
+    if (ret != 0) {
+        fprintf(stderr, "fsp_walk failed!\n");
         return 1;
     }
 
-    char source_real[PATH_MAX];
-    if (!realpath(source_path, source_real)) {
-        fprintf(stderr, "fsp-send: realpath('%s') failed: %s\n",
-                source_path, strerror(errno));
-        return 1;
+    // --- End of directory transaction ---
+    if ( dry_run != 1 ) {
+        const char *end_line = "END\n";
+        fsp_bw_push(&state.protowritebuf, end_line, strlen(end_line));
+        fsp_bw_flush(&state.protowritebuf);
     }
 
 
-    if (send_header(STDOUT_FILENO) != 0) 
-        return 1;
+    // Cleanup allocated memory
+    fsp_dir_entries_free(&state.entries);
+    // TODO: cleanup other buffers
 
-    if (send_set_mode(STDOUT_FILENO, cli_mode) != 0)
-        return 1;
-
-    if (send_empty_file_list(STDOUT_FILENO) != 0)
-        return 1;
-
-    if (send_end(STDOUT_FILENO) != 0)
-        return 1;
-
-    fprintf(stderr, "fsp-send: done\n");
+   
     return 0;
 }
