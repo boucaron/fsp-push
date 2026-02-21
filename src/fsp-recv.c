@@ -1,35 +1,42 @@
 #include "fsp.h"
 #include "fsp_io.h"
 #include "fsp_opt.h"
+#include "fsp_walk.h"
+#include "fsp_rx.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-
-
-#include <sys/stat.h>
+#include <stdbool.h>
+#include <inttypes.h>
 #include <errno.h>
 #include <limits.h>
 #include <fcntl.h>
-
+#include <sys/stat.h>
+#include <unistd.h>
 #include <getopt.h>
 
+#ifdef _WIN32
+#include <io.h>
+#endif
+
 static struct option long_opts[] = {
-    { "mode", required_argument, 0, 'm' },
+    { "override-mode", required_argument, 0, 'm' },
+    { "version", no_argument, 0, 'v'},
     { 0, 0, 0, 0 }
 };
 
 
 static void usage(const char *prog) {
     fprintf(stderr,
-        "usage: %s [--mode MODE] <dest-root>\n"
+        "usage: %s [--override-mode MODE] [--version] <dest-root>\n"
         "\n"
-        "Modes:\n"
-        "  append      Default: Add only, never overwrite\n"        
+        "Override Modes:\n"
+        "  append      Add only, never overwrite\n"        
         "  safe        Missing file create, Exists: same hash skip, different hash abort entire stream\n"
         "  force       Always overwrite, Ignore existing content\n"
         "\n"
+         "FSP - Forward Snapshot Protocol - receiver\n"
         "Version: 0.1\n"
         "(c) 2026 - Julien BOUCARON\n"
         ,prog);
@@ -88,33 +95,8 @@ static int ensure_dir_exists(const char *path) {
     return 0;
 }
 
-
-static int open_dest_root(const char *path, char *out_realpath, size_t out_sz) {
-    char tmp[PATH_MAX];
-
-    if (!realpath(path, tmp)) {
-        perror("realpath");
-        return -1;
-    }
-
-    if (strlen(tmp) + 1 > out_sz) {
-        fprintf(stderr, "fsp-recv: realpath too long\n");
-        return -1;
-    }
-
-    strcpy(out_realpath, tmp);
-
-    int fd = open(out_realpath, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
-    if (fd < 0) {
-        perror("open dest root");
-        return -1;
-    }
-
-    return fd;
-}
-
-
 int main(int argc, char **argv) {
+    int hasOverrideMode = 0;
     fsp_mode_t cli_mode = FSP_APPEND;    
 
     int opt;
@@ -124,9 +106,13 @@ int main(int argc, char **argv) {
             if (fsp_parse_mode(optarg, &cli_mode) != 0) {
                 fprintf(stderr, "Invalid mode: %s\n", optarg);
                 usage(argv[0]);
-                return 1;
-            }            
+                exit(EXIT_FAILURE);   
+            }          
+            hasOverrideMode = 1;  
             break;
+        case 'v':
+            fprintf(stdout, "Version: 0.1\n");
+            return 0;
         default:
             usage(argv[0]);
             return 1;
@@ -136,178 +122,77 @@ int main(int argc, char **argv) {
     if (optind >= argc) {
         fprintf(stderr, "Missing <dest-root>\n");
         usage(argv[0]);
-        return 1;
+        exit(EXIT_FAILURE);
     }
 
     if (optind + 1 != argc) {
         fprintf(stderr, "Too many arguments\n");
         usage(argv[0]);
-        return 1;
+        exit(EXIT_FAILURE);
     }
 
     const char *dest_root = argv[optind];
 
     
     fprintf(stderr, "fsp-recv: dest-root = %s\n", dest_root);
-    fprintf(stderr, "fsp-recv: mode = %d\n", cli_mode);
-
-    /*
-     * TODO:
-     * - store cli_mode as default current_mode
-     * - when SET_MODE is received on wire:
-     *     - override current_mode
-     * - apply current_mode when opening files
-     */
-
-    // For now, just keep it so we can wire it later
-    fsp_mode_t current_mode = cli_mode;
+    if ( hasOverrideMode != 0 )
+        fprintf(stderr, "fsp-recv: override-mode = %d\n", cli_mode);        
 
     if (ensure_dir_exists(dest_root) != 0) {
-     return 1;
+        exit(EXIT_FAILURE);
     }
+
+    // TODO: Override Mode is not implemented yet
+
+
     
-    char dest_real[PATH_MAX];
-    int dest_fd = open_dest_root(dest_root, dest_real, sizeof(dest_real));
-    if (dest_fd < 0) {
-        goto out;
+    fsp_receiver_state_t state;
+    state.state = FSP_RX_EXPECT_VERSION;
+    state.total_bytes = 0;
+    state.total_files = 0;
+    state.file_buf = malloc(sizeof(uint8_t) * 1024 * 1024 * 16);
+    if ( state.file_buf == NULL ) {
+        return -1;
+    }
+    state.proto_buf = malloc(sizeof(uint8_t) * 1024 * 1024 * 16);
+    if ( state.proto_buf == NULL ) {
+        return -1;
+    }
+    state.file_buf_size = sizeof(uint8_t) * 1024 * 1024 * 16;
+    state.proto_buf_size = sizeof(uint8_t) * 1024 * 1024 * 16;
+
+    state.entries = NULL;
+    state.entries_capacity = 0;
+
+    state.target_path = fsp_normalize_path(dest_root);
+    if (!state.target_path) {
+        free(state.file_buf);
+        return -1;
+    }
+    state.verbose = 0; // Not verbose
+
+
+#ifdef _WIN32
+    _setmode(_fileno(stdin), _O_BINARY);
+#endif
+
+    FILE *fp = stdin;
+
+    clock_gettime(CLOCK_MONOTONIC, &state.last_speed_ts);
+    state.last_speed_bytes = 0;
+    state.last_throughput  = 0.0;
+
+    // Start main loop
+    int ret = fsp_receiver_process_line(&state, fp);
+    while(ret != -1) {
+        ret = fsp_receiver_process_line(&state, fp);
     }
 
-    fprintf(stderr, "fsp-recv: dest-root = %s\n", dest_real);
+    free(state.file_buf);
+    free(state.proto_buf);
 
-
-    fprintf(stderr, "fsp-recv: ready to rock!\nfsp-recv: Waiting for the header\n");
-    // OK READ THE PROTOCOL HEADER FIRST
-    int errHeader = 0;
-    uint32_t magic = fsp_read_u32_be(STDIN_FILENO, &errHeader);
-    if (errHeader)
-        return 1;
-    errHeader = 0;
-    uint16_t version = fsp_read_u16_be(STDIN_FILENO, &errHeader);
-    if (errHeader)
-        return 1;
-    errHeader = 0;
-    uint16_t flags = fsp_read_u16_be(STDIN_FILENO, &errHeader);
-    if (errHeader)
-        return 1;
-
-    if (magic != 0x46535031) { // "FSP1"
-        fprintf(stderr, "fsp-recv: bad magic: 0x%08x\n", magic);
-        return 1;
-    }
-
-    if (version != 2) {
-        fprintf(stderr, "fsp-recv: unsupported version: %u\n", version);
-        return 1;
-    }
-
-    if (flags != 0) {
-        fprintf(stderr, "fsp-recv: unsupported flags: 0x%04x\n", flags);
-        return 1;
-    }
-
-    fprintf(stderr, "fsp-recv: protocol OK (v%u)\n", version);
-
-   // MAIN LOOP
-
-    for (;;) {
-        uint8_t cmd;
-
-        if (fsp_read_exact(STDIN_FILENO, &cmd, 1) != 0) {
-            fprintf(stderr, "fsp-recv: failed to read command byte\n");
-            return 1;
-        }
-
-        switch (cmd) {
-
-        case FSP_CMD_SET_MODE: { // 0x10
-            uint8_t mode;
-
-            if (fsp_read_exact(STDIN_FILENO, &mode, 1) != 0)
-                return 1;
-
-            fprintf(stderr, "fsp-recv: SET_MODE %u (%s)\n",
-                mode, fsp_mode_to_string((fsp_mode_t)mode));
-
-            switch (mode) {
-            case FSP_APPEND:            
-            case FSP_SAFE:
-            case FSP_FORCE:
-                current_mode = (fsp_mode_t)mode;
-                break;
-            default:
-                fprintf(stderr,
-                    "fsp-recv: unsupported SET_MODE %u (%s)\n",
-                    mode, fsp_mode_to_string((fsp_mode_t)mode));
-                return 1;
-            }
-            break;
-        }
-
-        case FSP_CMD_MKDIR: { // 0x01 (optional / deprecated)
-            int err = 0;
-            uint16_t path_len = fsp_read_u16_be(STDIN_FILENO, &err);
-            if (err)
-                return 1;
-
-            if (path_len == 0 || path_len > PATH_MAX) {
-                fprintf(stderr, "fsp-recv: MKDIR invalid path length %u\n", path_len);
-                return 1;
-            }
-
-            char path[PATH_MAX + 1];
-            if (fsp_read_exact(STDIN_FILENO, path, path_len) != 0)
-                return 1;
-            path[path_len] = '\0';
-
-            fprintf(stderr, "fsp-recv: MKDIR '%s' (ignored/optional)\n", path);
-
-            /*
-            * Spec: MKDIR is optional / deprecated.
-            * We rely on implicit mkdir during FILE_LIST handling.
-            */
-            break;
-        }
-
-        case FSP_CMD_FILE_LIST: { // 0x02
-            fprintf(stderr, "fsp-recv: FILE_LIST (TODO)\n");
-
-            /*
-            * TODO (next big step):
-            *  - read prefix_len + prefix (must end with '/')
-            *  - validate prefix (no .., no absolute)
-            *  - read entry_count
-            *  - for each entry:
-            *      - path
-            *      - size
-            *      - sha256
-            *  - create needed dirs using openat()
-            *  - open files according to current_mode
-            *  - then enter DATA receive state
-            */
-
-            fprintf(stderr, "fsp-recv: FILE_LIST not implemented yet\n");
-            return 1;
-        }
-
-        case FSP_CMD_END: { // 0xFF
-            fprintf(stderr, "fsp-recv: END\n");
-            goto done;
-        }
-
-        default:
-            fprintf(stderr, "fsp-recv: unknown cmd 0x%02x\n", cmd);
-            return 1;
-        }
-    }
-
-    done:
-    fprintf(stderr, "fsp-recv: session complete\n");
-
-    out:
-    if (dest_fd >= 0) {
-        close(dest_fd);
-        dest_fd = -1;
-    }
-
+    if ( ret == -1 )
+        fprintf(stderr,"\n ERROR found - check error before\n");
+   
     return 0;
 }

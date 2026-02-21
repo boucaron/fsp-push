@@ -63,7 +63,7 @@ static void usage(const char *prog) {
         "  --version           Show version information\n"
         "  --throughput        Simulated throughput in MB/s (e.g. 10.5)\n"
         "\n"
-        "FSP - Forward Snapshot Protocol\n"
+        "FSP - Forward Snapshot Protocol - sender\n"
         "Version: 0.1\n"
         "(c) 2026 - Julien BOUCARON\n",
         prog);

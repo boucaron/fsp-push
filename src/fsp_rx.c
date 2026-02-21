@@ -858,7 +858,9 @@ static int fsp_rx_handle_file_hashes(fsp_receiver_state_t *rx, FILE *fp) {
             int r = rename(temp_file, filepath);
             if ( r < 0 ) {
                 perror("rename");
-                fprintf(stderr, "fsp_rx_handle_file_hashes cannot rename the file %s", filepath);
+                fprintf(stderr, "fsp_rx_handle_file_hashes cannot rename from :\n %s to the file: \n %s", 
+                    temp_file,
+                    filepath);
                 unlink(temp_file);
                 return -1;
             }
