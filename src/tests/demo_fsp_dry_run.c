@@ -60,9 +60,6 @@ int main(void)
 
     
 
-    for(size_t  i = 0 ; i <  stats.dir_count ; i++) {
-       fsp_dry_run_add_protocol_call(&stats, 51200);
-    }
 
     // Compute pipelined simulation metrics
     fsp_dry_run_compute_simulation_metrics(&stats);

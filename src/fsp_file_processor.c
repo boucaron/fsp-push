@@ -13,7 +13,7 @@
 
 
 
-void fsp_file_processor_progressbar(fsp_walker_state_t *state) {
+void fsp_file_processor_progressbar(fsp_walker_state_t *state, int force) {
 
      /* Throttle updates:
        - every 100 files
@@ -22,8 +22,10 @@ void fsp_file_processor_progressbar(fsp_walker_state_t *state) {
     int bytes_trigger = 
         state->total_bytes >= state->last_speed_bytes + (THRESHOLD_DATA << 20);
 
-    if (!files_trigger && !bytes_trigger)
-        return;
+    if ( force != 1 ) {
+        if (!files_trigger && !bytes_trigger)
+            return;
+    }
 
     /* --- Update throughput ONLY on byte trigger --- */
     if (bytes_trigger) {
@@ -270,7 +272,7 @@ static int fsp_compute_big_file(const char *path,
             }
 
             state->total_bytes += n;
-            fsp_file_processor_progressbar(state);
+            fsp_file_processor_progressbar(state, 0);
 
             // Update SHA256 for this chunk
             if (EVP_DigestUpdate(chunk_ctx, buf, n) != 1) {
@@ -507,7 +509,7 @@ int fsp_file_processor_process_directory(fsp_walker_state_t *state)
             state->total_files++;
 
             // DEBUG
-            fsp_file_processor_progressbar(state);
+            fsp_file_processor_progressbar(state, 0);
 
         }
         ret = fsp_bw_flush(&state->protowritebuf);

@@ -205,6 +205,10 @@ int main(int argc, char **argv) {
         fsp_bw_flush(&state.protowritebuf);
     }
 
+    if ( !dry_run ) {
+        fsp_file_processor_progressbar(&state, 1);
+    }
+
 
     // Cleanup allocated memory
     fsp_dir_entries_free(&state.entries);
