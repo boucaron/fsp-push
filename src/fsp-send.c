@@ -61,7 +61,7 @@ static void usage(const char *prog) {
         "Options:\n"
         "  --dry-run           Scan and report files/size, do not stream\n"
         "  --version           Show version information\n"
-        "  --throughput        Simulation throughput in MB\n"
+        "  --throughput        Simulated throughput in MB/s (e.g. 10.5)\n"
         "\n"
         "FSP - Forward Snapshot Protocol\n"
         "Version: 0.1\n"
