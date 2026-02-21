@@ -9,7 +9,7 @@
 
 
 
-void fsp_file_processor_progressbar(fsp_walker_state_t *state);
+void fsp_file_processor_progressbar(fsp_walker_state_t *state, int force);
 
 /* =========================================================================
  * Directory Processor Interface

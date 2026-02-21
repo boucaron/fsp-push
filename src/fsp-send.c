@@ -203,9 +203,7 @@ int main(int argc, char **argv) {
         const char *end_line = "END\n";
         fsp_bw_push(&state.protowritebuf, end_line, strlen(end_line));
         fsp_bw_flush(&state.protowritebuf);
-    }
-
-    if ( !dry_run ) {
+   
         fsp_file_processor_progressbar(&state, 1);
     }
 

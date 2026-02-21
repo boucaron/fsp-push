@@ -19,8 +19,7 @@ typedef struct {
     fsp_simulation_cfg simulation_cfg; // Simulation for ETA
     fsp_simulation_cfg observed_perf; // Measured throughput / RTT at runtime
     
-
-    uint64_t protocol_total_size;
+    
     double simulation_data_time;
   
     double observed_data_time;
@@ -90,11 +89,7 @@ static inline void fsp_dry_run_add_file(fsp_dry_run_stats *s, uint64_t size)
 }
 
 
-/* Add a protocol call to filelist */
-static inline void fsp_dry_run_add_protocol_call(fsp_dry_run_stats *s, uint64_t size) {
-    if (!s) return;
-    s->protocol_total_size += size;
-}
+
 
 /* Reset all stats */
 static inline void fsp_dry_run_reset(fsp_dry_run_stats *s)
@@ -272,9 +267,7 @@ fsp_dry_run_report(fsp_dry_run_stats *s, char* custom)
     /* ------------------ */
     fprintf(stderr, "Simulation / Observed Metrics:\n");
     fsp_print_size(s->file_total_size, buf, sizeof(buf));
-    fprintf(stderr, "    Data size                    : %s\n", buf); 
-    fsp_print_size(s->protocol_total_size, buf, sizeof(buf));
-    fprintf(stderr, "    Protocol data size           : %s\n", buf); 
+    fprintf(stderr, "    Data size                    : %s\n", buf);     
     /* Simulation */
     fprintf(stderr, "  Simulation:\n");
     fprintf(stderr, "    Throughput                   : %8.2f MB/s\n", s->simulation_cfg.throughput / (1024.0 * 1024.0));    
