@@ -42,22 +42,31 @@ static struct option long_opts[] = {
     { "mode", required_argument, 0, 'm' },
     { "dry-run", no_argument, 0, 'd'},
     { "version", no_argument, 0, 'v'},
-    { 0, 0, 0, 0 }
+    { "throughput", required_argument, 0, 't'},    
+    { 0, 0, 0, 0, }
 };
 
 
 static void usage(const char *prog) {
     fprintf(stderr,
-        "usage: %s [--mode MODE] [--dry-run] [--version] <source-path>\n"
-        "\n"        
-        "Modes:\n"
-        "  append      Default: Add only, never overwrite\n"        
-        "  safe        Missing file create, Exists: same hash skip, different hash abort entire stream\n"
-        "  force       Always overwrite, Ignore existing content\n"
+        "Usage: %s [--mode MODE] [--dry-run] [--version] [--throughput floatMB] <source-path>\n"
         "\n"
+        "Modes:\n"
+        "  append   (default)  Create missing files, never overwrite existing ones\n"
+        "  safe                Create missing files; if file exists:\n"
+        "                      - same SHA-256  -> skip\n"
+        "                      - different     -> abort entire transfer (fail-fast)\n"
+        "  force               Always overwrite existing files\n"
+        "\n"
+        "Options:\n"
+        "  --dry-run           Scan and report files/size, do not stream\n"
+        "  --version           Show version information\n"
+        "  --throughput        Simulation throughput in MB\n"
+        "\n"
+        "FSP - Forward Snapshot Protocol\n"
         "Version: 0.1\n"
-        "(c) 2026 - Julien BOUCARON\n"
-        , prog);
+        "(c) 2026 - Julien BOUCARON\n",
+        prog);
 }
 
 
@@ -66,9 +75,9 @@ static void usage(const char *prog) {
 int main(int argc, char **argv) {
     fsp_mode_t cli_mode = FSP_APPEND;  
     int dry_run = 0;  
-
+    double throughput = 50.0;
     int opt;
-    while ((opt = getopt_long(argc, argv, "m:d", long_opts, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "m:d:t", long_opts, NULL)) != -1) {
         switch (opt) {
         case 'm':
             if (fsp_parse_mode(optarg, &cli_mode) != 0) {
@@ -85,6 +94,24 @@ int main(int argc, char **argv) {
         case 'v':
             fprintf(stdout, "Version: 0.1\n");
             return 0;
+
+        case 't':
+            char *endptr = NULL;
+            errno = 0;
+
+            throughput = strtod(optarg, &endptr);
+
+            /* Check conversion errors */
+            if (errno != 0 || endptr == optarg || *endptr != '\0') {
+                fprintf(stderr, "Invalid value for --throughput: '%s'\n", optarg);
+                exit(EXIT_FAILURE);
+            }
+
+            if (throughput <= 0.0) {
+                fprintf(stderr, "--throughput must be a positive double\n");
+                exit(EXIT_FAILURE);
+            }
+            break;
 
         default:
             usage(argv[0]);
@@ -111,7 +138,7 @@ int main(int argc, char **argv) {
     // Initialize dry run stats
     fsp_dry_run_stats dry_run_stats;
     fsp_dry_run_reset(&dry_run_stats);
-    dry_run_stats.simulation_cfg.throughput = 50 * 1024 * 1024; // 50 MB/s
+    dry_run_stats.simulation_cfg.throughput = throughput * 1024 * 1024; // 50 MB/s
     dry_run_stats.simulation_cfg.latencyRtt = 10.0;              // 10 ms
 
     // Initialize walker state
