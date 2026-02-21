@@ -83,7 +83,7 @@ int main(int argc, char **argv) {
             if (fsp_parse_mode(optarg, &cli_mode) != 0) {
                 fprintf(stderr, "Invalid mode: %s\n", optarg);
                 usage(argv[0]);
-                return 1;
+                exit(EXIT_FAILURE);                
             }
             break;
 
@@ -104,31 +104,33 @@ int main(int argc, char **argv) {
             /* Check conversion errors */
             if (errno != 0 || endptr == optarg || *endptr != '\0') {
                 fprintf(stderr, "Invalid value for --throughput: '%s'\n", optarg);
+                usage(argv[0]);
                 exit(EXIT_FAILURE);
             }
 
             if (throughput <= 0.0) {
                 fprintf(stderr, "--throughput must be a positive double\n");
+                usage(argv[0]);
                 exit(EXIT_FAILURE);
             }
             break;
 
         default:
             usage(argv[0]);
-            return 1;
+            exit(EXIT_FAILURE);
         }
     }
 
     if (optind >= argc) {
         fprintf(stderr, "Missing <source-path>\n");
         usage(argv[0]);
-        return 1;
+        exit(EXIT_FAILURE);
     }
 
     if (optind + 1 != argc) {
         fprintf(stderr, "Too many arguments\n");
         usage(argv[0]);
-        return 1;
+        exit(EXIT_FAILURE);
     }
 
     const char *source_path = argv[optind];
