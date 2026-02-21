@@ -722,6 +722,84 @@ static int fsp_rx_handle_hashfiles_count(fsp_receiver_state_t *rx, FILE *fp) {
     return 0;
 }
 
+static int fsp_rx_handle_file_hashes_safe_small_file(
+    fsp_receiver_state_t *rx,
+    fsp_file_entry_t *entry,
+    const char *existingFilePath,
+    struct stat *st)
+{
+    if (st->st_size != entry->size)
+        return -1;
+
+    EVP_MD_CTX *file_ctx = EVP_MD_CTX_new();
+    if (!file_ctx) {
+        fprintf(stderr, "EVP_MD_CTX_new failed\n");
+        return -1;
+    }
+
+    if (EVP_DigestInit_ex(file_ctx, EVP_sha256(), NULL) != 1) {
+        fprintf(stderr, "EVP_DigestInit_ex failed\n");
+        EVP_MD_CTX_free(file_ctx);
+        return -1;
+    }
+
+    FILE *fp = fopen(existingFilePath, "rb");
+    if (!fp) {
+        perror("fopen");
+        EVP_MD_CTX_free(file_ctx);
+        return -1;
+    }
+
+    uint8_t *buf = rx->file_buf;
+    size_t buf_size = rx->file_buf_size;
+    size_t remaining = (size_t)st->st_size;
+
+    while (remaining > 0) {
+        size_t chunk = remaining < buf_size ? remaining : buf_size;
+        size_t n = fread(buf, 1, chunk, fp);
+
+        if (n == 0) {
+            if (ferror(fp))
+                perror("fread");
+            else
+                fprintf(stderr, "Unexpected EOF while reading file\n");
+            fclose(fp);
+            EVP_MD_CTX_free(file_ctx);
+            return -1;
+        }
+
+        if (EVP_DigestUpdate(file_ctx, buf, n) != 1) {
+            fprintf(stderr, "EVP_DigestUpdate failed\n");
+            fclose(fp);
+            EVP_MD_CTX_free(file_ctx);
+            return -1;
+        }
+
+        remaining -= n;
+    }
+
+    unsigned char file_hash[SHA256_DIGEST_LENGTH];
+    if (EVP_DigestFinal_ex(file_ctx, file_hash, NULL) != 1) {
+        fprintf(stderr, "EVP_DigestFinal_ex failed\n");
+        fclose(fp);
+        EVP_MD_CTX_free(file_ctx);
+        return -1;
+    }
+
+    fclose(fp);
+    EVP_MD_CTX_free(file_ctx);
+
+    return (memcmp(file_hash, entry->file_hash, SHA256_DIGEST_LENGTH) == 0) ? 0 : -1;
+}
+
+static int fsp_rx_handle_file_hashes_safe_chunked_file(fsp_receiver_state_t *rx, 
+            fsp_file_entry_t *entry, const char* existingFilePath,
+            struct stat *st) {
+
+    
+
+    return 0;
+}
 
 
 static int fsp_rx_handle_file_hashes(fsp_receiver_state_t *rx, FILE *fp) {
@@ -851,15 +929,25 @@ static int fsp_rx_handle_file_hashes(fsp_receiver_state_t *rx, FILE *fp) {
                 unlink(temp_file);
             } else if ( rx->mode == FSP_SAFE ) {
                 // Fails if the hash is not the same   
-                // TODO: Not yet supported
-                return -1;                          
+                int r;
+                if ( st.st_size > FSP_CHUNK_SIZE ) {
+                    r = fsp_rx_handle_file_hashes_safe_chunked_file(rx, entry, filepath, &st);                    
+                } else {
+                    r = fsp_rx_handle_file_hashes_safe_small_file(rx, entry, filepath, &st);                    
+                }                      
+                if ( r != 0 ) {
+                    fprintf(stderr, "fsp_rx_handle_file_hashes invalid hash for the file: \n %s\n",
+                        filepath);
+                    unlink(temp_file);
+                    return -1;
+                }
             }
         }
         else {
             int r = rename(temp_file, filepath);
             if ( r < 0 ) {
                 perror("rename");
-                fprintf(stderr, "fsp_rx_handle_file_hashes cannot rename from :\n %s to the file: \n %s", 
+                fprintf(stderr, "fsp_rx_handle_file_hashes cannot rename from :\n %s to the file: \n %s\n", 
                     temp_file,
                     filepath);
                 unlink(temp_file);
