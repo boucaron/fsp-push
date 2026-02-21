@@ -733,12 +733,12 @@ static int fsp_rx_handle_file_hashes_safe_small_file(
 
     EVP_MD_CTX *file_ctx = EVP_MD_CTX_new();
     if (!file_ctx) {
-        fprintf(stderr, "EVP_MD_CTX_new failed\n");
+        fprintf(stderr, "fsp_rx_handle_file_hashes_safe_small_file EVP_MD_CTX_new failed\n");
         return -1;
     }
 
     if (EVP_DigestInit_ex(file_ctx, EVP_sha256(), NULL) != 1) {
-        fprintf(stderr, "EVP_DigestInit_ex failed\n");
+        fprintf(stderr, "fsp_rx_handle_file_hashes_safe_small_file EVP_DigestInit_ex failed\n");
         EVP_MD_CTX_free(file_ctx);
         return -1;
     }
@@ -746,6 +746,7 @@ static int fsp_rx_handle_file_hashes_safe_small_file(
     FILE *fp = fopen(existingFilePath, "rb");
     if (!fp) {
         perror("fopen");
+        fprintf(stderr, "fsp_rx_handle_file_hashes_safe_small_file, cannot open existing file:\n %s\n", existingFilePath);
         EVP_MD_CTX_free(file_ctx);
         return -1;
     }
@@ -762,14 +763,14 @@ static int fsp_rx_handle_file_hashes_safe_small_file(
             if (ferror(fp))
                 perror("fread");
             else
-                fprintf(stderr, "Unexpected EOF while reading file\n");
+                fprintf(stderr, "fsp_rx_handle_file_hashes_safe_small_file Unexpected EOF while reading file\n");
             fclose(fp);
             EVP_MD_CTX_free(file_ctx);
             return -1;
         }
 
         if (EVP_DigestUpdate(file_ctx, buf, n) != 1) {
-            fprintf(stderr, "EVP_DigestUpdate failed\n");
+            fprintf(stderr, "fsp_rx_handle_file_hashes_safe_small_file EVP_DigestUpdate failed\n");
             fclose(fp);
             EVP_MD_CTX_free(file_ctx);
             return -1;
@@ -780,7 +781,7 @@ static int fsp_rx_handle_file_hashes_safe_small_file(
 
     unsigned char file_hash[SHA256_DIGEST_LENGTH];
     if (EVP_DigestFinal_ex(file_ctx, file_hash, NULL) != 1) {
-        fprintf(stderr, "EVP_DigestFinal_ex failed\n");
+        fprintf(stderr, "fsp_rx_handle_file_hashes_safe_small_file EVP_DigestFinal_ex failed\n");
         fclose(fp);
         EVP_MD_CTX_free(file_ctx);
         return -1;
@@ -792,15 +793,149 @@ static int fsp_rx_handle_file_hashes_safe_small_file(
     return (memcmp(file_hash, entry->file_hash, SHA256_DIGEST_LENGTH) == 0) ? 0 : -1;
 }
 
-static int fsp_rx_handle_file_hashes_safe_chunked_file(fsp_receiver_state_t *rx, 
-            fsp_file_entry_t *entry, const char* existingFilePath,
-            struct stat *st) {
+static int fsp_rx_handle_file_hashes_safe_chunked_file(
+        fsp_receiver_state_t *rx,
+        fsp_file_entry_t *entry,
+        const char *existingFilePath,
+        struct stat *st)
+{
+    if (st->st_size != entry->size)
+        return -1;
 
-    
+    int ret = -1;
+    FILE *fp = NULL;
+    EVP_MD_CTX *chunk_ctx  = NULL;
+    EVP_MD_CTX *merkle_ctx = NULL;
 
-    return 0;
+    chunk_ctx  = EVP_MD_CTX_new();
+    merkle_ctx = EVP_MD_CTX_new();
+    if (!chunk_ctx || !merkle_ctx) {
+        fprintf(stderr,
+            "fsp_rx_handle_file_hashes_safe_chunked_file: EVP_MD_CTX_new failed\n");
+        goto cleanup;
+    }
+
+    ret = EVP_DigestInit_ex(merkle_ctx, EVP_sha256(), NULL);
+    if (ret != 1) {
+        fprintf(stderr,
+            "fsp_rx_handle_file_hashes_safe_chunked_file: EVP_DigestInit_ex (merkle) failed\n");
+        goto cleanup;
+    }
+
+    fp = fopen(existingFilePath, "rb");
+    if (!fp) {
+        perror("fopen");
+        fprintf(stderr,
+            "fsp_rx_handle_file_hashes_safe_chunked_file: cannot open existing file: %s\n",
+            existingFilePath);
+        goto cleanup;
+    }
+
+    uint8_t *buf = rx->file_buf;
+    size_t buf_size = rx->file_buf_size;
+    uint64_t remaining = (uint64_t)st->st_size;
+    size_t chunk_index = 0;
+
+    while (remaining > 0) {
+
+        uint64_t chunk_bytes =
+            remaining < FSP_CHUNK_SIZE ? remaining : FSP_CHUNK_SIZE;
+        uint64_t processed = 0;
+
+        ret = EVP_DigestInit_ex(chunk_ctx, EVP_sha256(), NULL);
+        if (ret != 1) {
+            fprintf(stderr,
+                "fsp_rx_handle_file_hashes_safe_chunked_file: EVP_DigestInit_ex (chunk) failed\n");
+            goto cleanup;
+        }
+
+        while (processed < chunk_bytes) {
+
+            size_t to_read = buf_size;
+            uint64_t left = chunk_bytes - processed;
+            if (to_read > left)
+                to_read = (size_t)left;
+
+            size_t n = fread(buf, 1, to_read, fp);
+            if (n == 0) {
+                if (feof(fp))
+                    fprintf(stderr,
+                        "fsp_rx_handle_file_hashes_safe_chunked_file: unexpected EOF in chunk\n");
+                else
+                    perror("fread");
+                goto cleanup;
+            }
+
+            processed += n;
+
+            if (EVP_DigestUpdate(chunk_ctx, buf, n) != 1) {
+                fprintf(stderr,
+                    "fsp_rx_handle_file_hashes_safe_chunked_file: EVP_DigestUpdate (chunk) failed\n");
+                goto cleanup;
+            }
+        }
+
+        uint8_t chunk_hash[SHA256_DIGEST_LENGTH];
+        ret = EVP_DigestFinal_ex(chunk_ctx, chunk_hash, NULL);
+        if (ret != 1) {
+            fprintf(stderr,
+                "fsp_rx_handle_file_hashes_safe_chunked_file: EVP_DigestFinal_ex (chunk) failed\n");
+            goto cleanup;
+        }
+
+        /* ---- FAIL-FAST CHUNK COMPARISON ---- */
+        if (chunk_index >= entry->num_chunks ||
+            memcmp(chunk_hash,
+                   entry->chunk_hashes[chunk_index],
+                   SHA256_DIGEST_LENGTH) != 0) {
+            ret = -1;
+            goto cleanup;
+        }
+
+        chunk_index++;
+
+        /* Update Merkle Level 0 hash */
+        ret = EVP_DigestUpdate(merkle_ctx,
+                               chunk_hash,
+                               SHA256_DIGEST_LENGTH);
+        if (ret != 1) {
+            fprintf(stderr,
+                "fsp_rx_handle_file_hashes_safe_chunked_file: EVP_DigestUpdate (merkle) failed\n");
+            goto cleanup;
+        }
+
+        remaining -= chunk_bytes;
+    }
+
+    /* Ensure same number of chunks */
+    if (chunk_index != entry->num_chunks) {
+        ret = -1;
+        goto cleanup;
+    }
+
+    /* Final Merkle hash */
+    unsigned char file_hash[SHA256_DIGEST_LENGTH];
+    ret = EVP_DigestFinal_ex(merkle_ctx, file_hash, NULL);
+    if (ret != 1) {
+        fprintf(stderr,
+            "fsp_rx_handle_file_hashes_safe_chunked_file: EVP_DigestFinal_ex (merkle) failed\n");
+        goto cleanup;
+    }
+
+    ret = (memcmp(file_hash,
+                  entry->file_hash,
+                  SHA256_DIGEST_LENGTH) == 0) ? 0 : -1;
+
+cleanup:
+    if (fp)
+        fclose(fp);
+    if (chunk_ctx)
+        EVP_MD_CTX_free(chunk_ctx);
+    if (merkle_ctx)
+        EVP_MD_CTX_free(merkle_ctx);
+
+    return ret;
 }
-
 
 static int fsp_rx_handle_file_hashes(fsp_receiver_state_t *rx, FILE *fp) {
 
