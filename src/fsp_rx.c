@@ -614,8 +614,6 @@ static int fsp_rx_handle_file_data(fsp_receiver_state_t *rx, FILE *fp) {
     for (size_t i = 0; i < rx->expected_files; i++) {
         fsp_file_entry_t *entry = &rx->entries[i];
 
-        if (entry->size == 0) continue; // skip empty files
-
         char filepath[PATH_MAX+512];
         if ( strlen(rx->current_dir) > 0 ) {
             snprintf(filepath, sizeof(filepath), "%s/%s/%s", rx->target_path, rx->current_dir, entry->name);
@@ -675,20 +673,22 @@ static int fsp_rx_handle_file_data(fsp_receiver_state_t *rx, FILE *fp) {
                 "%s",
                 tmpname);                           
        
-        if (entry->size > FSP_CHUNK_SIZE) {
-           if (fsp_rx_handle_chunked_file(rx, entry, fp, out, fileexist) < 0) {                
-                fclose(out);
-                unlink(filepath);                
-                fprintf(stderr,"fsp_rx_handle_file_data, fsp_rx_handle_chunked_file filepath failed %s\n", filepath);                
-                return -1;
+        if (entry->size > 0 ) {
+            if (entry->size > FSP_CHUNK_SIZE) {
+            if (fsp_rx_handle_chunked_file(rx, entry, fp, out, fileexist) < 0) {                
+                    fclose(out);
+                    unlink(filepath);                
+                    fprintf(stderr,"fsp_rx_handle_file_data, fsp_rx_handle_chunked_file filepath failed %s\n", filepath);                
+                    return -1;
+                }
+            } else {
+                if (fsp_rx_handle_small_file(rx, entry, fp, out, fileexist) < 0) {                
+                    fclose(out);
+                    unlink(filepath);                
+                    fprintf(stderr,"fsp_rx_handle_file_data, fsp_rx_handle_small_file filepath failed %s\n", filepath);                                
+                    return -1;
+                }            
             }
-        } else {
-             if (fsp_rx_handle_small_file(rx, entry, fp, out, fileexist) < 0) {                
-                fclose(out);
-                unlink(filepath);                
-                fprintf(stderr,"fsp_rx_handle_file_data, fsp_rx_handle_small_file filepath failed %s\n", filepath);                                
-                return -1;
-            }            
         }
 
         fclose(out);
@@ -837,36 +837,36 @@ static int fsp_rx_handle_file_hashes(fsp_receiver_state_t *rx, FILE *fp) {
             fileexist = 0;
         }
 
-        if ( entry->size != 0 ) {
-            char temp_file[PATH_MAX+512];
-            if ( strlen(rx->current_dir) > 0 ) {
-                snprintf(temp_file, sizeof(temp_file), "%s/%s/%s", rx->target_path, rx->current_dir, entry->current_tempfile);
-            } else {
-                snprintf(temp_file, sizeof(temp_file), "%s/%s", rx->target_path, entry->current_tempfile);
-            }
+        
+        char temp_file[PATH_MAX+512];
+        if ( strlen(rx->current_dir) > 0 ) {
+            snprintf(temp_file, sizeof(temp_file), "%s/%s/%s", rx->target_path, rx->current_dir, entry->current_tempfile);
+        } else {
+            snprintf(temp_file, sizeof(temp_file), "%s/%s", rx->target_path, entry->current_tempfile);
+        }
 
-            if ( fileexist && rx->mode != FSP_FORCE ) {              
-                if ( rx->mode == FSP_APPEND ) {
-                    // Just skip and remove the empty temp_file
-                    unlink(temp_file);
-                } else if ( rx->mode == FSP_SAFE ) {
-                    // Fails if the hash is not the same   
-                    // TODO: Not yet supported
-                    return -1;                          
-                }
-            }
-            else {
-                int r = rename(temp_file, filepath);
-                if ( r < 0 ) {
-                    perror("rename");
-                    fprintf(stderr, "fsp_rx_handle_file_hashes cannot rename from :\n %s to the file: \n %s", 
-                        temp_file,
-                        filepath);
-                    unlink(temp_file);
-                    return -1;
-                }
+        if ( fileexist && rx->mode != FSP_FORCE ) {              
+            if ( rx->mode == FSP_APPEND ) {
+                // Just skip and remove the empty temp_file
+                unlink(temp_file);
+            } else if ( rx->mode == FSP_SAFE ) {
+                // Fails if the hash is not the same   
+                // TODO: Not yet supported
+                return -1;                          
             }
         }
+        else {
+            int r = rename(temp_file, filepath);
+            if ( r < 0 ) {
+                perror("rename");
+                fprintf(stderr, "fsp_rx_handle_file_hashes cannot rename from :\n %s to the file: \n %s", 
+                    temp_file,
+                    filepath);
+                unlink(temp_file);
+                return -1;
+            }
+        }
+       
 
 
         // DEBUG
