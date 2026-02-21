@@ -1069,13 +1069,14 @@ static int fsp_rx_handle_file_hashes(fsp_receiver_state_t *rx, FILE *fp) {
                     r = fsp_rx_handle_file_hashes_safe_chunked_file(rx, entry, filepath, &st);                    
                 } else {
                     r = fsp_rx_handle_file_hashes_safe_small_file(rx, entry, filepath, &st);                    
-                }                      
+                }                    
                 if ( r != 0 ) {
-                    fprintf(stderr, "fsp_rx_handle_file_hashes invalid hash for the file: \n %s\n",
+                    fprintf(stderr, "fsp_rx_handle_file_hashes invalid hash or different file size for the file: \n %s\n",
                         filepath);
                     unlink(temp_file);
                     return -1;
                 }
+                unlink(temp_file);
             }
         }
         else {
