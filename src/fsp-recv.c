@@ -23,13 +23,14 @@
 static struct option long_opts[] = {
     { "override-mode", required_argument, 0, 'm' },
     { "version", no_argument, 0, 'v'},
+    { "verbose", no_argument, 0, 'V'},
     { 0, 0, 0, 0 }
 };
 
 
 static void usage(const char *prog) {
     fprintf(stderr,
-        "usage: %s [--override-mode MODE] [--version] <dest-root>\n"
+        "usage: %s [--override-mode MODE] [--version] [--verbose] <dest-root>\n"
         "\n"
         "Override Modes:\n"
         "  append      Add only, never overwrite\n"        
@@ -97,7 +98,8 @@ static int ensure_dir_exists(const char *path) {
 
 int main(int argc, char **argv) {
     int hasOverrideMode = 0;
-    fsp_mode_t cli_mode = FSP_APPEND;    
+    fsp_mode_t cli_mode = FSP_APPEND; 
+    int verbose = 0;   
 
     int opt;
     while ((opt = getopt_long(argc, argv, "m:", long_opts, NULL)) != -1) {
@@ -112,7 +114,10 @@ int main(int argc, char **argv) {
             break;
         case 'v':
             fprintf(stdout, "Version: 0.1\n");
-            return 0;
+            return 0;            
+        case 'V':
+            verbose = 1;
+            break;
         default:
             usage(argv[0]);
             return 1;
@@ -169,7 +174,7 @@ int main(int argc, char **argv) {
         free(state.file_buf);
         return -1;
     }
-    state.verbose = 0; // Not verbose
+    state.verbose = verbose;
 
 
 #ifdef _WIN32
