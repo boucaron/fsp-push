@@ -606,99 +606,85 @@ static int fsp_rx_handle_chunked_file(fsp_receiver_state_t *rx,
     return 0;
 }
 
-
+#define MAX_OPEN_FILES 32  // safe slice size
 static int fsp_rx_handle_file_data(fsp_receiver_state_t *rx, FILE *fp) {
     if (rx->expected_files == 0) return -1;
-    
 
-    for (size_t i = 0; i < rx->expected_files; i++) {
-        fsp_file_entry_t *entry = &rx->entries[i];
+    for (size_t slice_start = 0; slice_start < rx->expected_files; slice_start += MAX_OPEN_FILES) {
+        size_t slice_end = slice_start + MAX_OPEN_FILES;
+        if (slice_end > rx->expected_files) slice_end = rx->expected_files;
 
-        char filepath[PATH_MAX+512];
-        if ( strlen(rx->current_dir) > 0 ) {
-            snprintf(filepath, sizeof(filepath), "%s/%s/%s", rx->target_path, rx->current_dir, entry->name);
-        } else {
-            snprintf(filepath, sizeof(filepath), "%s/%s", rx->target_path, entry->name);
-        }
+        // Temporary array of FILE* for this slice
+        FILE **out_files = calloc(slice_end - slice_start, sizeof(FILE*));
+        if (!out_files) return -1;
 
-        int fileexist = 0;
-        struct stat st;
-        if (stat(filepath, &st) == 0) {        
-            fileexist = 1;
-        } else {    
-            fileexist = 0;
-        }
+        // Open temp files and process data
+        for (size_t i = slice_start; i < slice_end; i++) {
+            fsp_file_entry_t *entry = &rx->entries[i];
 
-        FILE *out = NULL;
-        
-        char *orig_name = strrchr(filepath, '/');
-        if (!orig_name) {
-            fprintf(stderr, "Invalid path\n");
-            return -1;
-        }
-        orig_name++;  // points to basename
+            char filepath[PATH_MAX+512];
+            if (strlen(rx->current_dir) > 0)
+                snprintf(filepath, sizeof(filepath), "%s/%s/%s",
+                         rx->target_path, rx->current_dir, entry->name);
+            else
+                snprintf(filepath, sizeof(filepath), "%s/%s",
+                         rx->target_path, entry->name);
 
-        // Replace basename with ".tmp.XXXXXX"
-        size_t remaining = sizeof(filepath) - (orig_name - filepath);
-        if (remaining < strlen(".tmp.XXXXXX") + 1) {
-            fprintf(stderr, "Path buffer too small\n");
-            return -1;
-        }
+            int fileexist = 0;
+            struct stat st;
+            if (stat(filepath, &st) == 0) fileexist = 1;
 
-        snprintf(orig_name, remaining, ".tmp.XXXXXX");
+            char *orig_name = strrchr(filepath, '/');
+            if (!orig_name) { fprintf(stderr, "Invalid path\n"); free(out_files); return -1; }
+            orig_name++; // basename
 
-        int fd = mkstemp(filepath);
-        if (fd < 0) {
-            perror("mkstemp");
-            return -1;
-        }
+            // Replace basename with ".tmp.XXXXXX"
+            size_t remaining = sizeof(filepath) - (orig_name - filepath);
+            if (remaining < strlen(".tmp.XXXXXX") + 1) { fprintf(stderr, "Path buffer too small\n"); free(out_files); return -1; }
+            snprintf(orig_name, remaining, ".tmp.XXXXXX");
 
-        fchmod(fd, 0644);
+            int fd = mkstemp(filepath);
+            if (fd < 0) { perror("mkstemp"); free(out_files); return -1; }
+            fchmod(fd, 0644);
 
-        out = fdopen(fd, "wb");
-        if (!out) {
-            perror("fdopen");
-            fprintf(stderr,"fsp_rx_handle_file_data, fopen failed for %s\n", filepath);
-            close(fd);
-            unlink(filepath);
-            return -1;
-        }
+            FILE *out = fdopen(fd, "wb");
+            if (!out) { perror("fdopen"); close(fd); unlink(filepath); free(out_files); return -1; }
+            out_files[i - slice_start] = out;
 
-        // Extract temp filename (basename only)
-        char *tmpname = strrchr(filepath, '/');
-        tmpname++;  
+            // Save temp filename
+            char *tmpname = strrchr(filepath, '/'); tmpname++;
+            snprintf(entry->current_tempfile, sizeof(entry->current_tempfile), "%s", tmpname);
 
-        snprintf(entry->current_tempfile,
-                sizeof(entry->current_tempfile),
-                "%s",
-                tmpname);                           
-       
-        if (entry->size > 0 ) {
-            if (entry->size > FSP_CHUNK_SIZE) {
-            if (fsp_rx_handle_chunked_file(rx, entry, fp, out, fileexist) < 0) {                
+            // Write file contents
+            if (entry->size > 0) {
+                int ret;
+                if (entry->size > FSP_CHUNK_SIZE)
+                    ret = fsp_rx_handle_chunked_file(rx, entry, fp, out, fileexist);
+                else
+                    ret = fsp_rx_handle_small_file(rx, entry, fp, out, fileexist);
+
+                if (ret < 0) {
                     fclose(out);
-                    unlink(filepath);                
-                    fprintf(stderr,"fsp_rx_handle_file_data, fsp_rx_handle_chunked_file filepath failed %s\n", filepath);                
+                    unlink(filepath);
+                    // Close already opened files in this slice
+                    for (size_t j = 0; j < i - slice_start; j++) if (out_files[j]) fclose(out_files[j]);
+                    free(out_files);
                     return -1;
                 }
-            } else {
-                if (fsp_rx_handle_small_file(rx, entry, fp, out, fileexist) < 0) {                
-                    fclose(out);
-                    unlink(filepath);                
-                    fprintf(stderr,"fsp_rx_handle_file_data, fsp_rx_handle_small_file filepath failed %s\n", filepath);                                
-                    return -1;
-                }            
             }
         }
 
-        fclose(out);
+        // Close all files in the slice
+        for (size_t i = 0; i < slice_end - slice_start; i++)
+            if (out_files[i]) fclose(out_files[i]);
+
+        free(out_files);
     }
 
     // After reading all file data, transition to Phase 3 (hashes)
     rx->state = FSP_RX_EXPECT_FILE_HASHES_COUNT;
     return 0;
 }
-
 
 static int fsp_rx_handle_hashfiles_count(fsp_receiver_state_t *rx, FILE *fp) {
     char line[128];
