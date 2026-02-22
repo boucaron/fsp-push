@@ -22,27 +22,48 @@ FSP is:
 
 ---
 
-## Why FSP?
+## Why FSP? (Tired of Waiting on "Classic" File Transfers?)
 
-Traditional file transfer tools use application-level request/acknowledgment cycles:
+Pushing or pulling gigabytes—whether dumping phone photos/videos, migrating to a new machine, backing up to/from NAS, or syncing large datasets—feels painfully slow with everyday tools:
+
+- **SFTP/SCP** (over SSH): Encryption + per-packet handshaking + tiny default buffers → crawl on latency (Wi-Fi, VPN, cross-room, WAN), especially with many small files. Speeds often drop to low MB/s or KB/s even on gigabit links.
+- **SMB/CIFS**: Chatty protocol designed for low-latency LAN → tanks over any real distance/jitter, with small-file transfers hitting ridiculous slowdowns or disconnects mid-multi-GB push.
+- **rsync over SSH**: Better for increments, but still pays the full SSH overhead tax and metadata scanning costs on fresh/large snapshots.
+
+Result: Transfers that should take minutes stretch to hours, overheat devices, drain batteries, or fail halfway with partial/corrupted data.
+
+Traditional tools rely on **application-level request/acknowledgment cycles**:
 
 1. Send file metadata  
 2. Wait for receiver acknowledgment  
 3. Send file content  
 
-On high-latency links (e.g., 100 ms RTT):
+On moderate-latency paths (20–100 ms RTT common on Wi-Fi, home networks, or VPN):
 
-- 10 small files → 10 round-trips → ~1 second wasted  
+- For **one small file** (e.g., a photo): 1 round-trip for negotiation/metadata + data flow → minor wait.
+- For **10 small files**: 10 round-trips → 10 × RTT wasted on waiting alone  
+  - At 20 ms RTT (decent home Wi-Fi): 10 × 0.02 s = **0.2 seconds** pure overhead  
+  - At 100 ms RTT (Wi-Fi + VPN or cross-subnet NAS): 10 × 0.1 s = **1 second** wasted  
+- For **1,000 small files** (typical Camera roll or backup dir):  
+  - 20 ms RTT → **20 seconds** lost to round-trips  
+  - 100 ms RTT → **100 seconds** (1.7 minutes) lost — before any data even starts moving meaningfully  
+- Scale to **10,000+ files** (common in media libraries or code repos): minutes to tens of minutes of **pure waiting**, even if the actual data transfer is fast once the pipe is open.
 
-Even on fast links, this adds unnecessary latency.  
+Add encryption overhead (SFTP/SCP), protocol chatter (SMB), or small default buffers → real throughput often <10–20% of link capacity on mixed workloads.
 
-**FSP removes application-level ACKs entirely**, relying on the transport layer for:  
+**FSP eliminates application-level ACKs entirely**, making it a pure forward stream. It relies on the transport (TCP, SSH, etc.) for:
 
-- Reliable delivery  
-- Ordered streams  
+- Reliable, ordered delivery  
 - Congestion and flow control  
+- Packet-level error handling  
 
-The application layer focuses **only on structure and integrity**, not back-and-forth messaging.  
+The application handles **only structure and integrity** — with embedded per-file/per-chunk SHA-256, atomic commits, and fail-fast aborts — no back-and-forth. This means:
+
+- Saturates available bandwidth (especially with TCP tuning)  
+- Excels on mixed workloads (many tiny files + huge blobs) without per-file penalties  
+- Verifies everything during transfer, commits safely (append-only default), and stops cold on problems
+
+In short: FSP is for the "why does this simple copy take forever and risk my data?" moments that SFTP, SCP, SMB, and friends still force on us in 2026.
 
 ---
 
