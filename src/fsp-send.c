@@ -207,6 +207,7 @@ int main(int argc, char **argv) {
         fsp_bw_flush(&state.protowritebuf);
    
         fsp_file_processor_progressbar(&state, 1);
+        fprintf(stderr,"\n");
     }
 
 

@@ -134,7 +134,7 @@ fsp-send /data | ssh user@host fsp-recv /dest
 
 ### TCP
 ```bash
-fsp-send /data | nc host 9000
+fsp-send /data | socat STDIN TCP:host:9000
 ```
 
 ### TLS
@@ -146,6 +146,79 @@ fsp-send /data | ncat --ssl host 9000
 ```bash
 fsp-send /data | gzip | ssh user@host "gzip -d | fsp-recv /dest"
 ```
+
+### High Latency specifics
+
+For WAN and high-latency links (including satellite), achieving high throughput requires tuning the TCP window size to match the Bandwidth-Delay Product (BDP).
+
+BDP ≈ bandwidth × RTT
+
+Example:
+1 Gbps × 100 ms RTT ≈ 12.5 MB
+1 Gbps × 500 ms RTT ≈ 62.5 MB
+
+Your TCP send/receive buffers must be at least this size to fully utilize the link.
+
+---
+
+SSH style:
+You may use HPN-SSH (psc.edu/hpn-ssh-home), which increases SSH internal buffers for high-performance transfers.
+
+---
+
+TLS/TCP style:
+You can use `socat` with a custom send buffer.
+
+Note that Linux caps socket buffers using :
+- `net.core.wmem_max`
+- `net.core.rmem_max`
+
+Also note that on Linux, the kernel internally doubles the value
+passed to `sndbuf`, so the effective buffer may differ from what
+is specified.
+
+--- 
+
+Example for 100 ms latency and 1 Gbps:
+```bash
+fsp-send /data | socat STDIN TCP:host:9000,sndbuf=16777216
+```
+(16 MB is sufficient for ~100 ms at 1 Gbps.)
+
+Receiver:
+```bash
+socat TCP-LISTEN:9000,fork STDOUT | fsp-recv /dest
+```
+At this latency, Linux TCP autotuning is usually sufficient if kernel limits are not restrictive.
+
+--- 
+
+Example for 500ms latency and 1 Gbps:
+```bash
+fsp-send /data | socat STDIN TCP:host:9000,sndbuf=67108864
+```
+
+(64 MB required to match the BDP.)
+
+In this case, Linux kernel tuning is often required if defaults are small.
+
+Receiver (and possibly sender) tuning:
+```bash
+sudo sysctl -w net.core.wmem_max=67108864
+sudo sysctl -w net.core.rmem_max=67108864
+sudo sysctl -w net.ipv4.tcp_wmem="4096 16384 67108864"
+sudo sysctl -w net.ipv4.tcp_rmem="4096 131072 67108864"
+sudo sysctl -w net.ipv4.tcp_window_scaling=1
+```
+Then launch the receiver:
+```bash
+socat TCP-LISTEN:9000,fork STDOUT | fsp-recv /dest
+```
+
+Note:
+- The effective socket buffer cannot exceed net.core.wmem_max / rmem_max.
+- Both sender and receiver may require tuning depending on system defaults.
+
 
 ---
 
