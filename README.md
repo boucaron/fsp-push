@@ -187,7 +187,7 @@ fsp-send /data | socat STDIN TCP:host:9000,sndbuf=16777216
 
 Receiver:
 ```bash
-socat TCP-LISTEN:9000,fork STDOUT | fsp-recv /dest
+socat TCP-LISTEN:9000,reuseaddr STDOUT | fsp-recv /dest
 ```
 At this latency, Linux TCP autotuning is usually sufficient if kernel limits are not restrictive.
 
@@ -212,7 +212,7 @@ sudo sysctl -w net.ipv4.tcp_window_scaling=1
 ```
 Then launch the receiver:
 ```bash
-socat TCP-LISTEN:9000,fork STDOUT | fsp-recv /dest
+socat TCP-LISTEN:9000,reuseaddr STDOUT | fsp-recv /dest
 ```
 
 Note:
