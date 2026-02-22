@@ -277,4 +277,11 @@ fsp-recv [options] <destination>      # Receive and commit snapshot
 - `--force` → replace all files  
 - `--safe` → verify SHA-256; fail if existing file mismatches  
 
+## Built With
+- C (portable, high-performance)
+- OpenSSL (for SHA-256 hashing)
+
+## Requirements
+- Linux / macOS / Windows (MinGW) / Android (arm64 via NDK)
+- OpenSSL library (or static-linked binary)
 
