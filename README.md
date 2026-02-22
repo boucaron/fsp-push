@@ -238,7 +238,7 @@ With compression:
 
 ```bash
 fsp-send /data | zstd > dump.fsp.zst
-zstd -d dump.fsp.zst | fsp-recv - /restore
+zstd -d dump.fsp.zst | fsp-recv /restore
 ```
 
 ---
