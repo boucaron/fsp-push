@@ -2,12 +2,21 @@
 #include "fsp.h"
 #include "fsp_walk.h"
 #include "fsp_rx.h"
+
 #include "fsp_progress.h"
 
 #include <sys/stat.h>
 #include <errno.h>
 #include <ctype.h>
 #include <openssl/evp.h>
+
+
+
+// ANDROID PATCH BEGIN - At least API VERSION 23 (using 24 in my case)
+#ifndef be64toh
+#include <endian.h>
+#endif
+// ANDROID PATCH END
 
 
 // Progress Bar

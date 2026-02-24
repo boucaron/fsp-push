@@ -1,0 +1,43 @@
+# Android cross-compile Makefile for FSP (sender only for now)
+
+NDK             ?= $(ANDROID_NDK_HOME)
+TOOLCHAIN       ?= $(NDK)/toolchains/llvm/prebuilt/windows-x86_64
+SYSROOT         ?= $(NDK)/sysroot
+API             ?= 24
+TARGET          ?= aarch64-linux-android
+
+CC              := $(TOOLCHAIN)/bin/$(TARGET)$(API)-clang
+STRIP           := $(TOOLCHAIN)/bin/llvm-strip
+AR              := $(TOOLCHAIN)/bin/llvm-ar
+RANLIB          := $(TOOLCHAIN)/bin/llvm-ranlib
+
+OPENSSL_INCLUDE ?= /home/admin/android/openssl-3.6.1/build-arm64/include     # ← EDIT
+OPENSSL_LIB     ?= /home/admin/android/openssl-3.6.1/build-arm64/lib         # ← EDIT
+
+CFLAGS          := -Os -flto -fPIE -static -Wall -Wextra \
+                   -I. -I$(OPENSSL_INCLUDE) \
+                   -D_FILE_OFFSET_BITS=64 -I../include
+
+LDFLAGS         := -L$(OPENSSL_LIB) -lcrypto
+
+# List your source files (add receiver files later if separate binary)
+SOURCES         := fsp_io.c fsp_opt.c fsp_walk.c \
+                   fsp_file_processor.c fsp_rx.c fsp-send.c
+
+OBJECTS         := $(SOURCES:.c=.o)
+
+TARGET_BINARY   := fsp-send-arm64
+
+all: $(TARGET_BINARY)
+
+$(TARGET_BINARY): $(OBJECTS)
+	$(CC) $(CFLAGS) $(OBJECTS) $(LDFLAGS) -o $@
+	$(STRIP) $@
+
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+clean:
+	rm -f $(OBJECTS) $(TARGET_BINARY)
+
+.PHONY: all clean

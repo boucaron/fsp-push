@@ -5,6 +5,7 @@
 #include <string.h>
 #include <stdio.h>
 
+
 int fsp_write_all(int fd, const void *buf, size_t len) {
     const uint8_t *p = buf;
 
