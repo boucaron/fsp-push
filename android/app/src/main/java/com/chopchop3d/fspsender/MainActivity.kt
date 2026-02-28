@@ -11,12 +11,18 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -62,7 +68,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
 fun MainScreen(
     onPickDirectory: () -> Unit,
@@ -80,9 +86,10 @@ fun MainScreen(
     var sshUser by remember { mutableStateOf("") }
     var sshPassword by remember { mutableStateOf("") }
     var sshStatus by remember { mutableStateOf("SSH status: Idle") }
-
     var passwordVisible by remember { mutableStateOf(false) }
 
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     val scope = rememberCoroutineScope()
 
     fun updateUI(files: Int, dirs: Int, size: Long, elapsedMs: Long) {
@@ -162,14 +169,22 @@ fun MainScreen(
             value = sshHost,
             onValueChange = { sshHost = it },
             label = { Text("SSH Host") },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Next),
+            keyboardActions = KeyboardActions(
+                onNext = { focusManager.moveFocus(FocusDirection.Down) }
+            )
         )
         Spacer(modifier = Modifier.height(8.dp))
         OutlinedTextField(
             value = sshUser,
             onValueChange = { sshUser = it },
             label = { Text("SSH Username") },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Next),
+            keyboardActions = KeyboardActions(
+                onNext = { focusManager.moveFocus(FocusDirection.Down) }
+            )
         )
         Spacer(modifier = Modifier.height(8.dp))
         OutlinedTextField(
@@ -185,7 +200,13 @@ fun MainScreen(
                     modifier = Modifier.clickable { passwordVisible = !passwordVisible }
                 )
             },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+            keyboardOptions = KeyboardOptions.Default.copy(
+                keyboardType = KeyboardType.Password,
+                imeAction = ImeAction.Done
+            ),
+            keyboardActions = KeyboardActions(
+                onDone = { keyboardController?.hide() }
+            )
         )
         Spacer(modifier = Modifier.height(8.dp))
 
@@ -202,6 +223,8 @@ fun MainScreen(
         Text(sshStatus)
     }
 }
+
+// --- SSH + Scan functions (unchanged) ---
 
 suspend fun testSSHConnection(host: String, username: String, password: String): Boolean =
     withContext(Dispatchers.IO) {
@@ -233,7 +256,6 @@ suspend fun scanAndHashDirectory(
     treeUri: Uri,
     onProgress: ((files: Int, dirs: Int, size: Long) -> Unit)? = null
 ): ScanResult = coroutineScope {
-
     var totalFiles = 0
     var totalDirs = 0
     var totalSize = 0L
@@ -242,14 +264,10 @@ suspend fun scanAndHashDirectory(
 
     suspend fun dfs(docId: String) {
         if (!visitedDirs.add(docId)) return
+        if (totalDirs % 10 == 0) Log.e("FSPSender", "Starting DFS on document ID: $docId")
 
-        if (totalDirs % 10 == 0) {
-            Log.e("FSPSender", "Starting DFS on document ID: $docId")
-        }
-
-        // Use name for sorting
-        val filesList = mutableListOf<Triple<String, String, Long>>() // docId, name, size
-        val dirsList = mutableListOf<Pair<String, String>>()           // docId, name
+        val filesList = mutableListOf<Triple<String, String, Long>>()
+        val dirsList = mutableListOf<Pair<String, String>>()
 
         val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, docId)
         val projection = arrayOf(
@@ -267,53 +285,37 @@ suspend fun scanAndHashDirectory(
                 val size = c.getLong(c.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_SIZE))
                 val name = c.getString(c.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME))
 
-                if (DocumentsContract.Document.MIME_TYPE_DIR == mime) {
-                    dirsList.add(childDocId to name)
-                } else {
-                    filesList.add(Triple(childDocId, name, size))
-                }
+                if (DocumentsContract.Document.MIME_TYPE_DIR == mime) dirsList.add(childDocId to name)
+                else filesList.add(Triple(childDocId, name, size))
             }
         }
 
-        // Sort files and directories by name ascending
         filesList.sortBy { it.second.lowercase() }
         dirsList.sortBy { it.second.lowercase() }
 
-        // Process files
         for ((childDocId, _, size) in filesList) {
             totalFiles++
-
             var triggerSize = false
             val thresholdSize = 1024L * 1024L * 10L
-            if (totalSize / thresholdSize < (totalSize + size) / thresholdSize) {
-                triggerSize = true
-            }
-
+            if (totalSize / thresholdSize < (totalSize + size) / thresholdSize) triggerSize = true
             totalSize += size
 
             var triggerFile = false
             val thresholdFile = 10
-            if (totalFiles % thresholdFile == 0) {
-                triggerFile = true
-            }
+            if (totalFiles % thresholdFile == 0) triggerFile = true
 
             val fileUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, childDocId)
 
             try {
                 val sha256 = computeSHA256(context, fileUri, buffer)
-                if (triggerFile || triggerSize) {
-                    Log.e("FSPSender", "File: $fileUri, Size: $size, SHA256: $sha256")
-                }
+                if (triggerFile || triggerSize) Log.e("FSPSender", "File: $fileUri, Size: $size, SHA256: $sha256")
             } catch (e: Exception) {
                 Log.e("FSPSender", "Error hashing file $fileUri", e)
             }
 
-            if (triggerFile || triggerSize) {
-                onProgress?.invoke(totalFiles, totalDirs, totalSize)
-            }
+            if (triggerFile || triggerSize) onProgress?.invoke(totalFiles, totalDirs, totalSize)
         }
 
-        // Process directories recursively
         for ((dirId, _) in dirsList) {
             totalDirs++
             dfs(dirId)
@@ -321,7 +323,6 @@ suspend fun scanAndHashDirectory(
     }
 
     dfs(DocumentsContract.getTreeDocumentId(treeUri))
-
     ScanResult(totalFiles, totalDirs, totalSize)
 }
 
@@ -330,13 +331,9 @@ suspend fun computeSHA256(context: ComponentActivity, fileUri: Uri, buffer: Byte
         val digest = MessageDigest.getInstance("SHA-256")
         val stream = context.contentResolver.openInputStream(fileUri)
             ?: throw Exception("Cannot open stream for: $fileUri")
-
         stream.use {
             var read: Int
-            while (it.read(buffer).also { read = it } != -1) {
-                digest.update(buffer, 0, read)
-            }
+            while (it.read(buffer).also { read = it } != -1) digest.update(buffer, 0, read)
         }
-
         digest.digest().joinToString("") { "%02x".format(it) }
     }
