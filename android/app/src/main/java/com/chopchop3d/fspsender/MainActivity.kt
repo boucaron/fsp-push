@@ -37,6 +37,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.security.MessageDigest
 import java.util.Properties
+import androidx.lifecycle.lifecycleScope
 
 
 
@@ -69,6 +70,12 @@ class MainActivity : ComponentActivity() {
                     MainScreen(
                         onPickDirectory = { openDirectory.launch(null) },
                         selectedUri = selectedUri,
+                        onScanDirectory = { uri, onProgress ->
+                            val scanner = DirectoryScanner(this)
+                            lifecycleScope.launch {
+                                scanner.scan(uri, onProgress)
+                            }
+                        },
                         context = this
                     )
                 }
@@ -82,6 +89,7 @@ class MainActivity : ComponentActivity() {
 fun MainScreen(
     onPickDirectory: () -> Unit,
     selectedUri: Uri?,
+    onScanDirectory: suspend (Uri, (files: Int, dirs: Int, size: Long) -> Unit) -> Unit,
     context: ComponentActivity
 ) {
     var fileCount by remember { mutableStateOf(0) }
@@ -135,15 +143,14 @@ fun MainScreen(
 
                         val startTime = System.currentTimeMillis()
 
-                        val scanResult = withContext(Dispatchers.IO) {
-                            scanAndHashDirectory(context, selectedUri) { f, d, s ->
-                                val elapsedMs = System.currentTimeMillis() - startTime
-                                scope.launch { updateUI(f, d, s, elapsedMs) }
-                            }
+                        onScanDirectory(selectedUri) { f, d, s ->
+                            val elapsedMs = System.currentTimeMillis() - startTime
+                            fileCount = f
+                            dirCount = d
+                            totalSize = s
+                            elapsedTime = elapsedMs
                         }
 
-                        val totalElapsed = System.currentTimeMillis() - startTime
-                        updateUI(scanResult.files, scanResult.dirs, scanResult.size, totalElapsed)
                         statusMessage = "Scan & SHA256 completed"
                     }
                 }
@@ -236,96 +243,3 @@ fun MainScreen(
 }
 
 
-
-data class ScanResult(
-    val files: Int,
-    val dirs: Int,
-    val size: Long
-)
-
-suspend fun scanAndHashDirectory(
-    context: ComponentActivity,
-    treeUri: Uri,
-    onProgress: ((files: Int, dirs: Int, size: Long) -> Unit)? = null
-): ScanResult = coroutineScope {
-    var totalFiles = 0
-    var totalDirs = 0
-    var totalSize = 0L
-    val buffer = ByteArray(16 * 1024 * 1024)
-    val visitedDirs = mutableSetOf<String>()
-
-    suspend fun dfs(docId: String) {
-        if (!visitedDirs.add(docId)) return
-        if (totalDirs % 10 == 0) Log.e("FSPSender", "Starting DFS on document ID: $docId")
-
-        val filesList = mutableListOf<Triple<String, String, Long>>()
-        val dirsList = mutableListOf<Pair<String, String>>()
-
-        val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, docId)
-        val projection = arrayOf(
-            DocumentsContract.Document.COLUMN_DOCUMENT_ID,
-            DocumentsContract.Document.COLUMN_MIME_TYPE,
-            DocumentsContract.Document.COLUMN_SIZE,
-            DocumentsContract.Document.COLUMN_DISPLAY_NAME
-        )
-
-        val cursor = context.contentResolver.query(childrenUri, projection, null, null, null)
-        cursor?.use { c ->
-            while (c.moveToNext()) {
-                val childDocId = c.getString(c.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID))
-                val mime = c.getString(c.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_MIME_TYPE))
-                val size = c.getLong(c.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_SIZE))
-                val name = c.getString(c.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME))
-
-                if (DocumentsContract.Document.MIME_TYPE_DIR == mime) dirsList.add(childDocId to name)
-                else filesList.add(Triple(childDocId, name, size))
-            }
-        }
-
-        filesList.sortBy { it.second.lowercase() }
-        dirsList.sortBy { it.second.lowercase() }
-
-        for ((childDocId, _, size) in filesList) {
-            totalFiles++
-            var triggerSize = false
-            val thresholdSize = 1024L * 1024L * 10L
-            if (totalSize / thresholdSize < (totalSize + size) / thresholdSize) triggerSize = true
-            totalSize += size
-
-            var triggerFile = false
-            val thresholdFile = 10
-            if (totalFiles % thresholdFile == 0) triggerFile = true
-
-            val fileUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, childDocId)
-
-            try {
-                val sha256 = computeSHA256(context, fileUri, buffer)
-                if (triggerFile || triggerSize) Log.e("FSPSender", "File: $fileUri, Size: $size, SHA256: $sha256")
-            } catch (e: Exception) {
-                Log.e("FSPSender", "Error hashing file $fileUri", e)
-            }
-
-            if (triggerFile || triggerSize) onProgress?.invoke(totalFiles, totalDirs, totalSize)
-        }
-
-        for ((dirId, _) in dirsList) {
-            totalDirs++
-            dfs(dirId)
-        }
-    }
-
-    dfs(DocumentsContract.getTreeDocumentId(treeUri))
-    ScanResult(totalFiles, totalDirs, totalSize)
-}
-
-suspend fun computeSHA256(context: ComponentActivity, fileUri: Uri, buffer: ByteArray): String =
-    withContext(Dispatchers.IO) {
-        val digest = MessageDigest.getInstance("SHA-256")
-        val stream = context.contentResolver.openInputStream(fileUri)
-            ?: throw Exception("Cannot open stream for: $fileUri")
-        stream.use {
-            var read: Int
-            while (it.read(buffer).also { read = it } != -1) digest.update(buffer, 0, read)
-        }
-        digest.digest().joinToString("") { "%02x".format(it) }
-    }
