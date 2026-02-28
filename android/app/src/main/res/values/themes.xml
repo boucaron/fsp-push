@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.FSPSender" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.FSPSender"  parent="android:Theme.Material.Light.NoActionBar">
+    <!-- Optional: force window background to black for Compose dark theme -->
+    <item name="android:windowBackground">@android:color/black</item>
+    </style>
 </resources>
