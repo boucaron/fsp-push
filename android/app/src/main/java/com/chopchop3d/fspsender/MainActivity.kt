@@ -258,7 +258,17 @@ fun MainScreen(
                 sshStatus = if (success) "SSH: target directory exists" else "SSH: target directory does not exist"
             }
         }) {
-            Text("Test SSH Connection")
+            Text("Test target directory")
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        ZenburnButton(onClick = {
+            scope.launch {
+                sshStatus = "Connecting..."
+                val success = sshHelper.checkFSPReceiverExists(sshHost, sshUser, sshPassword)
+                sshStatus = if (success) "SSH: fsp-recv exists on target host" else "SSH: fsp-recv does not exist or not in path"
+            }
+        }) {
+            Text("Test fsp-recv Connection")
         }
         Spacer(modifier = Modifier.height(8.dp))
         Text(sshStatus)

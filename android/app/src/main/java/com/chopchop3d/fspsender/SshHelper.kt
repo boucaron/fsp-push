@@ -104,4 +104,85 @@ class SshHelper {
             } catch (_: Exception) {}
         }
     }
+
+
+    private suspend fun executeCommand(
+        session: Session,
+        command: String
+    ): Int {
+
+        val channel = session.openChannel("exec") as ChannelExec
+        channel.setCommand(command)
+
+        val errorStream = channel.errStream
+        channel.connect()
+
+        while (!channel.isClosed) {
+            delay(50)
+        }
+
+        val exitStatus = channel.exitStatus
+
+        errorStream?.bufferedReader()?.use { reader ->
+            val errorOutput = reader.readText()
+            if (errorOutput.isNotBlank()) {
+                Log.e("SshHelper", "SSH stderr: $errorOutput")
+            }
+        }
+
+        channel.disconnect()
+
+        return exitStatus
+    }
+
+    suspend fun checkFSPReceiverExists(
+        host: String,
+        username: String,
+        password: String,
+        port: Int = 22
+    ): Boolean = withContext(Dispatchers.IO) {
+
+        var session: Session? = null
+
+        try {
+            val jsch = JSch()
+            session = jsch.getSession(username, host, port)
+            session.setPassword(password)
+
+            val config = Properties().apply {
+                put("StrictHostKeyChecking", "no")
+            }
+
+            session.setConfig(config)
+            session.timeout = 5000
+            session.connect()
+
+            // ---------- First command: which ----------
+            val whichExit = executeCommand(session, "which fsp-recv")
+            if (whichExit != 0) {
+                Log.e("SshHelper", "fsp-recv not found in PATH")
+            }
+            val whichExit2 = executeCommand(session, "which fsp-recv.exe")
+            if (whichExit2 != 0) {
+                Log.e("SshHelper", "fsp-recv.exe not found in PATH")
+            }
+
+            // ---------- Second command: version ----------
+            val versionExit = executeCommand(session, "fsp-recv --version")
+            if (versionExit != 0) {
+                Log.e("SshHelper", "fsp-recv exists but --version failed")
+                return@withContext false
+            }
+
+            true
+
+        } catch (e: Exception) {
+            Log.e("SshHelper", "FSP check failed", e)
+            false
+        } finally {
+            try {
+                session?.disconnect()
+            } catch (_: Exception) {}
+        }
+    }
 }
