@@ -9,11 +9,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -24,6 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.security.MessageDigest
 
 class MainActivity : ComponentActivity() {
 
@@ -66,17 +63,15 @@ fun MainScreen(
     var dirCount by remember { mutableStateOf(0) }
     var totalSize by remember { mutableStateOf(0L) }
     var elapsedTime by remember { mutableStateOf(0L) }
-    var readTime by remember { mutableStateOf(0L) } // cumulative read time
-    var isScanning by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf("Idle") }
 
     val scope = rememberCoroutineScope()
 
-    fun updateUI(files: Int, dirs: Int, size: Long, startTime: Long) {
+    fun updateUI(files: Int, dirs: Int, size: Long, elapsedMs: Long) {
         fileCount = files
         dirCount = dirs
         totalSize = size
-        elapsedTime = System.currentTimeMillis() - startTime
+        elapsedTime = elapsedMs
     }
 
     Column(
@@ -94,35 +89,30 @@ fun MainScreen(
         if (selectedUri != null) {
             Button(
                 onClick = {
-                    Log.e("FSPSender", "Scan & Read button clicked, starting coroutine")
+                    Log.e("FSPSender", "Scan & SHA256 button clicked, starting coroutine")
                     scope.launch {
-                        isScanning = true
+                        statusMessage = "Starting scan..."
                         fileCount = 0
                         dirCount = 0
                         totalSize = 0L
                         elapsedTime = 0L
-                        readTime = 0L
-                        statusMessage = "Starting scan..."
 
                         val startTime = System.currentTimeMillis()
 
                         val scanResult = withContext(Dispatchers.IO) {
-                            scanAndReadDirectory(context, selectedUri) { f, d, s, cumulativeReadMs ->
-                                scope.launch {
-                                    updateUI(f, d, s, startTime)
-                                    readTime = cumulativeReadMs
-                                }
+                            scanAndHashDirectory(context, selectedUri) { f, d, s ->
+                                val elapsedMs = System.currentTimeMillis() - startTime
+                                scope.launch { updateUI(f, d, s, elapsedMs) }
                             }
                         }
 
-                        // Final update
-                        updateUI(scanResult.files, scanResult.dirs, scanResult.size, startTime)
-                        statusMessage = "Scan & read completed"
-                        isScanning = false
+                        val totalElapsed = System.currentTimeMillis() - startTime
+                        updateUI(scanResult.files, scanResult.dirs, scanResult.size, totalElapsed)
+                        statusMessage = "Scan & SHA256 completed"
                     }
                 }
             ) {
-                Text("Scan & Read")
+                Text("Scan & Compute SHA256")
             }
         }
 
@@ -135,7 +125,6 @@ fun MainScreen(
         Text("Total size: $totalSize bytes")
         Spacer(modifier = Modifier.height(8.dp))
         Text("Elapsed time: ${elapsedTime / 1000}.${(elapsedTime % 1000) / 10} s")
-        Text("Read time: ${readTime / 1000}.${(readTime % 1000) / 10} s")
         Text("Mean throughput: ${
             if (elapsedTime > 0) {
                 val mb = totalSize.toDouble() / (1024 * 1024)
@@ -154,39 +143,31 @@ data class ScanResult(
     val size: Long
 )
 
-/**
- * DFS scan with inline file read and cumulative read-time measurement
- * Logs using Log.e so it’s visible easily in Logcat
- */
-suspend fun scanAndReadDirectory(
+suspend fun scanAndHashDirectory(
     context: ComponentActivity,
     treeUri: Uri,
-    onProgress: ((files: Int, dirs: Int, size: Long, readTimeMs: Long) -> Unit)? = null
+    onProgress: ((files: Int, dirs: Int, size: Long) -> Unit)? = null
 ): ScanResult = coroutineScope {
 
     var totalFiles = 0
     var totalDirs = 0
     var totalSize = 0L
-    var totalReadTime = 0L
-    val buffer = ByteArray(16 * 1024 * 1024) // 16MB
+    val buffer = ByteArray(16 * 1024 * 1024)
     val visitedDirs = mutableSetOf<String>()
-    val thresholdFiles = 100
-    val thresholdSize = 1024L * 1024L * 10L // 10MB
 
     suspend fun dfs(docId: String) {
         if (!visitedDirs.add(docId)) return
 
         Log.e("FSPSender", "Starting DFS on document ID: $docId")
 
-        val filesList = mutableListOf<Pair<String, Long>>() // documentId, size
+        val filesList = mutableListOf<Pair<String, Long>>()
         val dirsList = mutableListOf<String>()
 
         val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, docId)
         val projection = arrayOf(
             DocumentsContract.Document.COLUMN_DOCUMENT_ID,
             DocumentsContract.Document.COLUMN_MIME_TYPE,
-            DocumentsContract.Document.COLUMN_SIZE,
-            DocumentsContract.Document.COLUMN_FLAGS
+            DocumentsContract.Document.COLUMN_SIZE
         )
 
         val cursor = context.contentResolver.query(childrenUri, projection, null, null, null)
@@ -204,30 +185,22 @@ suspend fun scanAndReadDirectory(
             }
         }
 
-        // Process files and read them
         for ((childDocId, size) in filesList) {
             totalFiles++
             totalSize += size
 
             val fileUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, childDocId)
 
-            val readMs = try {
-                measureReadFile(context, fileUri, buffer)
+            try {
+                val sha256 = computeSHA256(context, fileUri, buffer)
+                Log.e("FSPSender", "File: $fileUri, Size: $size, SHA256: $sha256")
             } catch (e: Exception) {
-                Log.e("FSPSender", "Error reading file $fileUri", e)
-                0L
+                Log.e("FSPSender", "Error hashing file $fileUri", e)
             }
 
-            totalReadTime += readMs
-
-            if (totalFiles % thresholdFiles == 0 || totalSize % thresholdSize == 0L) {
-                withContext(Dispatchers.Main) {
-                    onProgress?.invoke(totalFiles, totalDirs, totalSize, totalReadTime)
-                }
-            }
+            onProgress?.invoke(totalFiles, totalDirs, totalSize)
         }
 
-        // Recurse into directories
         for (dirId in dirsList) {
             totalDirs++
             dfs(dirId)
@@ -239,29 +212,20 @@ suspend fun scanAndReadDirectory(
     ScanResult(totalFiles, totalDirs, totalSize)
 }
 
-/**
- * Reads an entire file using the given buffer and returns time spent in ms
- * Logs using Log.e for visibility
- */
-suspend fun measureReadFile(context: ComponentActivity, fileUri: Uri, buffer: ByteArray): Long =
+suspend fun computeSHA256(context: ComponentActivity, fileUri: Uri, buffer: ByteArray): String =
     withContext(Dispatchers.IO) {
-        var totalRead = 0L
-        val startTime = System.currentTimeMillis()
-
+        val digest = MessageDigest.getInstance("SHA-256")
         val stream = context.contentResolver.openInputStream(fileUri)
-        if (stream == null) {
-            Log.e("FSPSender", "Cannot open stream for: $fileUri")
-            return@withContext 0L
-        }
+            ?: throw Exception("Cannot open stream for: $fileUri")
 
         stream.use {
             var read: Int
             while (it.read(buffer).also { read = it } != -1) {
-                totalRead += read
+                digest.update(buffer, 0, read)
+
+                Log.e("FSPSender", "Read bytes = $read")
             }
         }
 
-        val elapsed = System.currentTimeMillis() - startTime
-        Log.e("FSPSender", "Read $totalRead bytes from $fileUri in $elapsed ms")
-        elapsed
+        digest.digest().joinToString("") { "%02x".format(it) }
     }
