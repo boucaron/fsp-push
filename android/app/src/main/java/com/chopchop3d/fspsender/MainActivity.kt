@@ -158,7 +158,9 @@ suspend fun scanAndHashDirectory(
     suspend fun dfs(docId: String) {
         if (!visitedDirs.add(docId)) return
 
-        Log.e("FSPSender", "Starting DFS on document ID: $docId")
+        if ( totalDirs % 10 == 0 ) {
+            Log.e("FSPSender", "Starting DFS on document ID: $docId")
+        }
 
         val filesList = mutableListOf<Pair<String, Long>>()
         val dirsList = mutableListOf<String>()
@@ -185,20 +187,41 @@ suspend fun scanAndHashDirectory(
             }
         }
 
+        // Sort filesList by name asc
+        // Sort dirsList by name asc
+
         for ((childDocId, size) in filesList) {
             totalFiles++
             totalSize += size
+
+            var triggerSize = false
+            var thresholdSize = 1024L * 1024L * 10L
+            if ( size >= thresholdSize ) {
+                triggerSize = true;
+            }
+            if ( totalSize % thresholdSize == 0L ) {
+                triggerSize = true
+            }
+            var triggerFile = false
+            var thresholdFile = 100
+            if (  totalFiles % thresholdFile == 0 ) {
+                triggerFile = true
+            }
 
             val fileUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, childDocId)
 
             try {
                 val sha256 = computeSHA256(context, fileUri, buffer)
-                Log.e("FSPSender", "File: $fileUri, Size: $size, SHA256: $sha256")
+                if ( triggerFile || triggerSize ) {
+                    Log.e("FSPSender", "File: $fileUri, Size: $size, SHA256: $sha256")
+                }
             } catch (e: Exception) {
                 Log.e("FSPSender", "Error hashing file $fileUri", e)
             }
 
-            onProgress?.invoke(totalFiles, totalDirs, totalSize)
+            if (triggerFile ||  triggerSize ) {
+                onProgress?.invoke(totalFiles, totalDirs, totalSize)
+            }
         }
 
         for (dirId in dirsList) {
@@ -223,7 +246,7 @@ suspend fun computeSHA256(context: ComponentActivity, fileUri: Uri, buffer: Byte
             while (it.read(buffer).also { read = it } != -1) {
                 digest.update(buffer, 0, read)
 
-                Log.e("FSPSender", "Read bytes = $read")
+               // Log.e("FSPSender", "Read bytes = $read")
             }
         }
 
