@@ -9,20 +9,25 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.chopchop3d.fspsender.ui.theme.FSPSenderTheme
+import com.jcraft.jsch.JSch
+import com.jcraft.jsch.Session
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import com.jcraft.jsch.JSch
-import com.jcraft.jsch.Session
 import java.security.MessageDigest
 import java.util.Properties
 
@@ -76,6 +81,8 @@ fun MainScreen(
     var sshPassword by remember { mutableStateOf("") }
     var sshStatus by remember { mutableStateOf("SSH status: Idle") }
 
+    var passwordVisible by remember { mutableStateOf(false) }
+
     val scope = rememberCoroutineScope()
 
     fun updateUI(files: Int, dirs: Int, size: Long, elapsedMs: Long) {
@@ -90,7 +97,6 @@ fun MainScreen(
             .fillMaxSize()
             .padding(16.dp)
     ) {
-
         // Directory selection
         Button(onClick = { onPickDirectory() }) {
             Text("Select Directory")
@@ -137,15 +143,17 @@ fun MainScreen(
         Text("Total size: $totalSize bytes")
         Spacer(modifier = Modifier.height(8.dp))
         Text("Elapsed time: ${elapsedTime / 1000}.${(elapsedTime % 1000) / 10} s")
-        Text("Mean throughput: ${
-            if (elapsedTime > 0) {
-                val mb = totalSize.toDouble() / (1024 * 1024)
-                val sec = elapsedTime.toDouble() / 1000
-                String.format("%.2f MB/s", mb / sec)
-            } else {
-                "0 MB/s"
-            }
-        }")
+        Text(
+            "Mean throughput: ${
+                if (elapsedTime > 0) {
+                    val mb = totalSize.toDouble() / (1024 * 1024)
+                    val sec = elapsedTime.toDouble() / 1000
+                    String.format("%.2f MB/s", mb / sec)
+                } else {
+                    "0 MB/s"
+                }
+            }"
+        )
 
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -169,6 +177,14 @@ fun MainScreen(
             onValueChange = { sshPassword = it },
             label = { Text("SSH Password") },
             modifier = Modifier.fillMaxWidth(),
+            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon = {
+                Icon(
+                    imageVector = Icons.Default.Lock,
+                    contentDescription = "Toggle password visibility",
+                    modifier = Modifier.clickable { passwordVisible = !passwordVisible }
+                )
+            },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
         )
         Spacer(modifier = Modifier.height(8.dp))
@@ -269,7 +285,7 @@ suspend fun scanAndHashDirectory(
 
             var triggerSize = false
             val thresholdSize = 1024L * 1024L * 10L
-            if (totalSize / thresholdSize < (totalSize + size)/ thresholdSize) {
+            if (totalSize / thresholdSize < (totalSize + size) / thresholdSize) {
                 triggerSize = true
             }
 
