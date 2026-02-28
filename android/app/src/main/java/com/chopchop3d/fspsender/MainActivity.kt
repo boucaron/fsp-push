@@ -142,7 +142,6 @@ data class ScanResult(
     val dirs: Int,
     val size: Long
 )
-
 suspend fun scanAndHashDirectory(
     context: ComponentActivity,
     treeUri: Uri,
@@ -158,18 +157,20 @@ suspend fun scanAndHashDirectory(
     suspend fun dfs(docId: String) {
         if (!visitedDirs.add(docId)) return
 
-        if ( totalDirs % 10 == 0 ) {
+        if (totalDirs % 10 == 0) {
             Log.e("FSPSender", "Starting DFS on document ID: $docId")
         }
 
-        val filesList = mutableListOf<Pair<String, Long>>()
-        val dirsList = mutableListOf<String>()
+        // Use name for sorting
+        val filesList = mutableListOf<Triple<String, String, Long>>() // docId, name, size
+        val dirsList = mutableListOf<Pair<String, String>>()           // docId, name
 
         val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, docId)
         val projection = arrayOf(
             DocumentsContract.Document.COLUMN_DOCUMENT_ID,
             DocumentsContract.Document.COLUMN_MIME_TYPE,
-            DocumentsContract.Document.COLUMN_SIZE
+            DocumentsContract.Document.COLUMN_SIZE,
+            DocumentsContract.Document.COLUMN_DISPLAY_NAME
         )
 
         val cursor = context.contentResolver.query(childrenUri, projection, null, null, null)
@@ -178,33 +179,34 @@ suspend fun scanAndHashDirectory(
                 val childDocId = c.getString(c.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID))
                 val mime = c.getString(c.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_MIME_TYPE))
                 val size = c.getLong(c.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_SIZE))
+                val name = c.getString(c.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME))
 
                 if (DocumentsContract.Document.MIME_TYPE_DIR == mime) {
-                    dirsList.add(childDocId)
+                    dirsList.add(childDocId to name)
                 } else {
-                    filesList.add(childDocId to size)
+                    filesList.add(Triple(childDocId, name, size))
                 }
             }
         }
 
-        // Sort filesList by name asc
-        // Sort dirsList by name asc
+        // Sort files and directories by name ascending
+        filesList.sortBy { it.second.lowercase() }
+        dirsList.sortBy { it.second.lowercase() }
 
-        for ((childDocId, size) in filesList) {
+        // Process files
+        for ((childDocId, _, size) in filesList) {
             totalFiles++
             totalSize += size
 
             var triggerSize = false
-            var thresholdSize = 1024L * 1024L * 10L
-            if ( size >= thresholdSize ) {
-                triggerSize = true;
-            }
-            if ( totalSize % thresholdSize == 0L ) {
+            val thresholdSize = 1024L * 1024L * 10L
+            if (size >= thresholdSize || totalSize % thresholdSize == 0L) {
                 triggerSize = true
             }
+
             var triggerFile = false
-            var thresholdFile = 100
-            if (  totalFiles % thresholdFile == 0 ) {
+            val thresholdFile = 100
+            if (totalFiles % thresholdFile == 0) {
                 triggerFile = true
             }
 
@@ -212,19 +214,20 @@ suspend fun scanAndHashDirectory(
 
             try {
                 val sha256 = computeSHA256(context, fileUri, buffer)
-                if ( triggerFile || triggerSize ) {
+                if (triggerFile || triggerSize) {
                     Log.e("FSPSender", "File: $fileUri, Size: $size, SHA256: $sha256")
                 }
             } catch (e: Exception) {
                 Log.e("FSPSender", "Error hashing file $fileUri", e)
             }
 
-            if (triggerFile ||  triggerSize ) {
+            if (triggerFile || triggerSize) {
                 onProgress?.invoke(totalFiles, totalDirs, totalSize)
             }
         }
 
-        for (dirId in dirsList) {
+        // Process directories recursively
+        for ((dirId, _) in dirsList) {
             totalDirs++
             dfs(dirId)
         }
