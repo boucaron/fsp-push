@@ -8,6 +8,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -22,6 +24,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -39,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -195,96 +200,145 @@ fun MainScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         // SSH input fields
-        OutlinedTextField(
-            value = sshHost,
-            onValueChange = { sshHost = it },
-            label = { Text("SSH Host") },
-            modifier = Modifier.fillMaxWidth(),
-            keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Next),
-            keyboardActions = KeyboardActions(
-                onNext = { focusManager.moveFocus(FocusDirection.Down) }
-            )
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        OutlinedTextField(
-            value = sshUser,
-            onValueChange = { sshUser = it },
-            label = { Text("SSH Username") },
-            modifier = Modifier.fillMaxWidth(),
-            keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Next),
-            keyboardActions = KeyboardActions(
-                onNext = { focusManager.moveFocus(FocusDirection.Down) }
-            )
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        OutlinedTextField(
-            value = sshPassword,
-            onValueChange = { sshPassword = it },
-            label = { Text("SSH Password") },
-            modifier = Modifier.fillMaxWidth(),
-            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-            trailingIcon = {
-                Icon(
-                    imageVector = Icons.Default.Lock,
-                    contentDescription = "Toggle password visibility",
-                    modifier = Modifier.clickable { passwordVisible = !passwordVisible }
+        Accordion(title = "SSH Settings") {
+            OutlinedTextField(
+                value = sshHost,
+                onValueChange = { sshHost = it },
+                label = { Text("SSH Host") },
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Next),
+                keyboardActions = KeyboardActions(
+                    onNext = { focusManager.moveFocus(FocusDirection.Down) }
                 )
-            },
-            keyboardOptions = KeyboardOptions.Default.copy(
-                keyboardType = KeyboardType.Password,
-                imeAction = ImeAction.Done
-            ),
-            keyboardActions = KeyboardActions(
-                onDone = { keyboardController?.hide() }
             )
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        OutlinedTextField(
-            value = targetDirectory,
-            onValueChange = { targetDirectory = it },
-            label = { Text("Target Directory") },
-            modifier = Modifier.fillMaxWidth(),
-            keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Next),
-            keyboardActions = KeyboardActions(
-                onNext = { focusManager.moveFocus(FocusDirection.Down) }
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedTextField(
+                value = sshUser,
+                onValueChange = { sshUser = it },
+                label = { Text("SSH Username") },
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Next),
+                keyboardActions = KeyboardActions(
+                    onNext = { focusManager.moveFocus(FocusDirection.Down) }
+                )
             )
-        )
-        Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedTextField(
+                value = sshPassword,
+                onValueChange = { sshPassword = it },
+                label = { Text("SSH Password") },
+                modifier = Modifier.fillMaxWidth(),
+                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                trailingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = "Toggle password visibility",
+                        modifier = Modifier.clickable { passwordVisible = !passwordVisible }
+                    )
+                },
+                keyboardOptions = KeyboardOptions.Default.copy(
+                    keyboardType = KeyboardType.Password,
+                    imeAction = ImeAction.Done
+                ),
+                keyboardActions = KeyboardActions(
+                    onDone = { keyboardController?.hide() }
+                )
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedTextField(
+                value = targetDirectory,
+                onValueChange = { targetDirectory = it },
+                label = { Text("Target Directory") },
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Next),
+                keyboardActions = KeyboardActions(
+                    onNext = { focusManager.moveFocus(FocusDirection.Down) }
+                )
+            )
+            Spacer(modifier = Modifier.height(8.dp))
 
-        ZenburnButton(onClick = {
-            scope.launch {
-                sshStatus = "Connecting..."
-                val success = sshHelper.testConnection(sshHost, sshUser, sshPassword)
-                sshStatus = if (success) "SSH status: Connected!" else "SSH status: Failed"
+            ZenburnButton(onClick = {
+                scope.launch {
+                    sshStatus = "Connecting..."
+                    val success = sshHelper.testConnection(sshHost, sshUser, sshPassword)
+                    sshStatus = if (success) "SSH status: Connected!" else "SSH status: Failed"
+                }
+            }) {
+                Text("Test SSH Connection")
             }
-        }) {
-            Text("Test SSH Connection")
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        ZenburnButton(onClick = {
-            scope.launch {
-                sshStatus = "Connecting..."
-                val success = sshHelper.checkTargetDirectory(targetDirectory, sshHost, sshUser, sshPassword)
-                sshStatus = if (success) "SSH: target directory exists" else "SSH: target directory does not exist"
+            Spacer(modifier = Modifier.height(8.dp))
+            ZenburnButton(onClick = {
+                scope.launch {
+                    sshStatus = "Connecting..."
+                    val success = sshHelper.checkTargetDirectory(
+                        targetDirectory,
+                        sshHost,
+                        sshUser,
+                        sshPassword
+                    )
+                    sshStatus =
+                        if (success) "SSH: target directory exists" else "SSH: target directory does not exist"
+                }
+            }) {
+                Text("Test target directory")
             }
-        }) {
-            Text("Test target directory")
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        ZenburnButton(onClick = {
-            scope.launch {
-                sshStatus = "Connecting..."
-                val success = sshHelper.checkFSPReceiverExists(sshHost, sshUser, sshPassword)
-                sshStatus = if (success) "SSH: fsp-recv exists on target host" else "SSH: fsp-recv does not exist or not in path"
+            Spacer(modifier = Modifier.height(8.dp))
+            ZenburnButton(onClick = {
+                scope.launch {
+                    sshStatus = "Connecting..."
+                    val success = sshHelper.checkFSPReceiverExists(sshHost, sshUser, sshPassword)
+                    sshStatus =
+                        if (success) "SSH: fsp-recv exists on target host" else "SSH: fsp-recv does not exist or not in path"
+                }
+            }) {
+                Text("Test fsp-recv Connection")
             }
-        }) {
-            Text("Test fsp-recv Connection")
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(sshStatus)
         }
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(sshStatus)
 
 
     }
 }
 
 
+
+@Composable
+fun Accordion(
+    title: String,
+    initiallyExpanded: Boolean = false,
+    content: @Composable () -> Unit
+) {
+    var expanded by remember { mutableStateOf(initiallyExpanded) }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize(animationSpec = spring()),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+        ) {
+            // Header / clickable title
+            Text(
+                text = title + if (expanded) " ▲" else " ▼",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded }
+                    .padding(12.dp),
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            // Content only visible when expanded
+            if (expanded) {
+                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                    content()
+                }
+            }
+        }
+    }
+}
