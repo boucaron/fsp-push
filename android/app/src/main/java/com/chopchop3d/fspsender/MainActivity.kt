@@ -10,17 +10,21 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.Button
-import androidx.compose.material3.Text
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.chopchop3d.fspsender.ui.theme.FSPSenderTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.jcraft.jsch.JSch
+import com.jcraft.jsch.Session
 import java.security.MessageDigest
+import java.util.Properties
 
 class MainActivity : ComponentActivity() {
 
@@ -53,6 +57,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
     onPickDirectory: () -> Unit,
@@ -64,6 +69,12 @@ fun MainScreen(
     var totalSize by remember { mutableStateOf(0L) }
     var elapsedTime by remember { mutableStateOf(0L) }
     var statusMessage by remember { mutableStateOf("Idle") }
+
+    // SSH fields
+    var sshHost by remember { mutableStateOf("") }
+    var sshUser by remember { mutableStateOf("") }
+    var sshPassword by remember { mutableStateOf("") }
+    var sshStatus by remember { mutableStateOf("SSH status: Idle") }
 
     val scope = rememberCoroutineScope()
 
@@ -80,6 +91,7 @@ fun MainScreen(
             .padding(16.dp)
     ) {
 
+        // Directory selection
         Button(onClick = { onPickDirectory() }) {
             Text("Select Directory")
         }
@@ -134,14 +146,72 @@ fun MainScreen(
                 "0 MB/s"
             }
         }")
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // SSH input fields
+        OutlinedTextField(
+            value = sshHost,
+            onValueChange = { sshHost = it },
+            label = { Text("SSH Host") },
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedTextField(
+            value = sshUser,
+            onValueChange = { sshUser = it },
+            label = { Text("SSH Username") },
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedTextField(
+            value = sshPassword,
+            onValueChange = { sshPassword = it },
+            label = { Text("SSH Password") },
+            modifier = Modifier.fillMaxWidth(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Button(onClick = {
+            scope.launch {
+                sshStatus = "Connecting..."
+                val success = testSSHConnection(sshHost, sshUser, sshPassword)
+                sshStatus = if (success) "SSH status: Connected!" else "SSH status: Failed"
+            }
+        }) {
+            Text("Test SSH Connection")
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(sshStatus)
     }
 }
+
+suspend fun testSSHConnection(host: String, username: String, password: String): Boolean =
+    withContext(Dispatchers.IO) {
+        try {
+            val jsch = JSch()
+            val session: Session = jsch.getSession(username, host, 22)
+            session.setPassword(password)
+            val config = Properties()
+            config["StrictHostKeyChecking"] = "no"
+            session.setConfig(config)
+            session.timeout = 5000
+            session.connect()
+            session.disconnect()
+            true
+        } catch (e: Exception) {
+            Log.e("FSPSender", "SSH connection failed", e)
+            false
+        }
+    }
 
 data class ScanResult(
     val files: Int,
     val dirs: Int,
     val size: Long
 )
+
 suspend fun scanAndHashDirectory(
     context: ComponentActivity,
     treeUri: Uri,
@@ -200,12 +270,10 @@ suspend fun scanAndHashDirectory(
             var triggerSize = false
             val thresholdSize = 1024L * 1024L * 10L
             if (totalSize / thresholdSize < (totalSize + size)/ thresholdSize) {
-                triggerSize = true;
+                triggerSize = true
             }
 
             totalSize += size
-
-
 
             var triggerFile = false
             val thresholdFile = 10
@@ -251,8 +319,6 @@ suspend fun computeSHA256(context: ComponentActivity, fileUri: Uri, buffer: Byte
             var read: Int
             while (it.read(buffer).also { read = it } != -1) {
                 digest.update(buffer, 0, read)
-
-               // Log.e("FSPSender", "Read bytes = $read")
             }
         }
 
