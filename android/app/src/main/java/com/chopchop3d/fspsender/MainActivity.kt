@@ -105,6 +105,8 @@ fun MainScreen(
     var sshStatus by remember { mutableStateOf("SSH status: Idle") }
     var passwordVisible by remember { mutableStateOf(false) }
 
+    var targetDirectory by remember { mutableStateOf("") }
+
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val scope = rememberCoroutineScope()
@@ -227,6 +229,17 @@ fun MainScreen(
             )
         )
         Spacer(modifier = Modifier.height(8.dp))
+        OutlinedTextField(
+            value = targetDirectory,
+            onValueChange = { targetDirectory = it },
+            label = { Text("Target Directory") },
+            modifier = Modifier.fillMaxWidth(),
+            keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Next),
+            keyboardActions = KeyboardActions(
+                onNext = { focusManager.moveFocus(FocusDirection.Down) }
+            )
+        )
+        Spacer(modifier = Modifier.height(8.dp))
 
         ZenburnButton(onClick = {
             scope.launch {
@@ -238,7 +251,19 @@ fun MainScreen(
             Text("Test SSH Connection")
         }
         Spacer(modifier = Modifier.height(8.dp))
+        ZenburnButton(onClick = {
+            scope.launch {
+                sshStatus = "Connecting..."
+                val success = sshHelper.checkTargetDirectory(targetDirectory, sshHost, sshUser, sshPassword)
+                sshStatus = if (success) "SSH: target directory exists" else "SSH: target directory does not exist"
+            }
+        }) {
+            Text("Test SSH Connection")
+        }
+        Spacer(modifier = Modifier.height(8.dp))
         Text(sshStatus)
+
+
     }
 }
 
