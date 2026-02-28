@@ -3,22 +3,37 @@ package com.chopchop3d.fspsender
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import android.provider.DocumentsContract
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
@@ -31,16 +46,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.chopchop3d.fspsender.ui.theme.FSPSenderTheme
 import com.chopchop3d.fspsender.ui.theme.ZenburnButton
-import com.jcraft.jsch.JSch
-import com.jcraft.jsch.Session
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.security.MessageDigest
-import java.util.Properties
-import androidx.lifecycle.lifecycleScope
-
 
 
 class MainActivity : ComponentActivity() {
@@ -72,11 +78,9 @@ class MainActivity : ComponentActivity() {
                     MainScreen(
                         onPickDirectory = { openDirectory.launch(null) },
                         selectedUri = selectedUri,
-                        onScanDirectory = { uri, onProgress ->
+                        onScanDirectory = { uri, dryRun, onProgress ->
                             val scanner = DirectoryScanner(this)
-                            lifecycleScope.launch {
-                                scanner.scan(uri, onProgress)
-                            }
+                            scanner.scan(uri, dryRun, onProgress)
                         },
                         context = this
                     )
@@ -91,7 +95,7 @@ class MainActivity : ComponentActivity() {
 fun MainScreen(
     onPickDirectory: () -> Unit,
     selectedUri: Uri?,
-    onScanDirectory: suspend (Uri, (files: Int, dirs: Int, size: Long) -> Unit) -> Unit,
+    onScanDirectory: suspend (Uri, Boolean, (files: Int, dirs: Int, size: Long) -> Unit) -> Unit,
     context: ComponentActivity
 ) {
     var fileCount by remember { mutableStateOf(0) }
@@ -99,6 +103,7 @@ fun MainScreen(
     var totalSize by remember { mutableStateOf(0L) }
     var elapsedTime by remember { mutableStateOf(0L) }
     var statusMessage by remember { mutableStateOf("Idle") }
+    var dry_run by remember { mutableStateOf(true) }
 
     // SSH fields
     var sshHost by remember { mutableStateOf("") }
@@ -140,17 +145,17 @@ fun MainScreen(
         if (selectedUri != null) {
             ZenburnButton(
                 onClick = {
-                    Log.e("FSPSender", "Scan & SHA256 button clicked, starting coroutine")
+                    Log.e("FSPSender", "Dry-run, starting coroutine")
                     scope.launch {
-                        statusMessage = "Starting scan..."
+                        statusMessage = "Starting dry-run..."
                         fileCount = 0
                         dirCount = 0
                         totalSize = 0L
                         elapsedTime = 0L
-
+                        dry_run = true
                         val startTime = System.currentTimeMillis()
 
-                        onScanDirectory(selectedUri) { f, d, s ->
+                        onScanDirectory(selectedUri, dry_run) { f, d, s ->
                             val elapsedMs = System.currentTimeMillis() - startTime
                             fileCount = f
                             dirCount = d
@@ -158,11 +163,11 @@ fun MainScreen(
                             elapsedTime = elapsedMs
                         }
 
-                        statusMessage = "Scan & SHA256 completed"
+                        statusMessage = "Dry-run completed"
                     }
                 }
             ) {
-                Text("Scan & Compute SHA256")
+                Text("Dry-run")
             }
         }
 
@@ -177,7 +182,7 @@ fun MainScreen(
         Text("Elapsed time: ${elapsedTime / 1000}.${(elapsedTime % 1000) / 10} s")
         Text(
             "Mean throughput: ${
-                if (elapsedTime > 0) {
+                if (!dry_run && elapsedTime > 0) {
                     val mb = totalSize.toDouble() / (1024 * 1024)
                     val sec = elapsedTime.toDouble() / 1000
                     String.format("%.2f MB/s", mb / sec)
