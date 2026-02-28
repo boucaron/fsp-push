@@ -196,16 +196,19 @@ suspend fun scanAndHashDirectory(
         // Process files
         for ((childDocId, _, size) in filesList) {
             totalFiles++
-            totalSize += size
 
             var triggerSize = false
             val thresholdSize = 1024L * 1024L * 10L
-            if (size >= thresholdSize || totalSize % thresholdSize == 0L) {
-                triggerSize = true
+            if (totalSize / thresholdSize < (totalSize + size)/ thresholdSize) {
+                triggerSize = true;
             }
 
+            totalSize += size
+
+
+
             var triggerFile = false
-            val thresholdFile = 100
+            val thresholdFile = 10
             if (totalFiles % thresholdFile == 0) {
                 triggerFile = true
             }
