@@ -234,6 +234,10 @@ suspend fun testSSHConnection(host: String, username: String, password: String):
             session.setPassword(password)
             val config = Properties()
             config["StrictHostKeyChecking"] = "no"
+            // Disable compression
+            config["compression.s2c"] = "none"
+            config["compression.c2s"] = "none"
+
             session.setConfig(config)
             session.timeout = 5000
             session.connect()
