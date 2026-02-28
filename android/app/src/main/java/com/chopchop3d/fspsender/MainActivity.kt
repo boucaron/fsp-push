@@ -28,6 +28,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.chopchop3d.fspsender.ui.theme.FSPSenderTheme
+import com.chopchop3d.fspsender.ui.theme.ZenburnButton
 import com.jcraft.jsch.JSch
 import com.jcraft.jsch.Session
 import kotlinx.coroutines.Dispatchers
@@ -36,6 +37,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.security.MessageDigest
 import java.util.Properties
+
+
 
 class MainActivity : ComponentActivity() {
 
@@ -58,11 +61,17 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             FSPSenderTheme {
-                MainScreen(
-                    onPickDirectory = { openDirectory.launch(null) },
-                    selectedUri = selectedUri,
-                    context = this
-                )
+                // Root Surface ensures dark background
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    MainScreen(
+                        onPickDirectory = { openDirectory.launch(null) },
+                        selectedUri = selectedUri,
+                        context = this
+                    )
+                }
             }
         }
     }
@@ -92,6 +101,8 @@ fun MainScreen(
     val keyboardController = LocalSoftwareKeyboardController.current
     val scope = rememberCoroutineScope()
 
+    val sshHelper = remember { SshHelper() }
+
     fun updateUI(files: Int, dirs: Int, size: Long, elapsedMs: Long) {
         fileCount = files
         dirCount = dirs
@@ -112,7 +123,7 @@ fun MainScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         if (selectedUri != null) {
-            Button(
+            ZenburnButton(
                 onClick = {
                     Log.e("FSPSender", "Scan & SHA256 button clicked, starting coroutine")
                     scope.launch {
@@ -210,10 +221,10 @@ fun MainScreen(
         )
         Spacer(modifier = Modifier.height(8.dp))
 
-        Button(onClick = {
+        ZenburnButton(onClick = {
             scope.launch {
                 sshStatus = "Connecting..."
-                val success = testSSHConnection(sshHost, sshUser, sshPassword)
+                val success = sshHelper.testConnection(sshHost, sshUser, sshPassword)
                 sshStatus = if (success) "SSH status: Connected!" else "SSH status: Failed"
             }
         }) {
@@ -224,30 +235,7 @@ fun MainScreen(
     }
 }
 
-// --- SSH + Scan functions (unchanged) ---
 
-suspend fun testSSHConnection(host: String, username: String, password: String): Boolean =
-    withContext(Dispatchers.IO) {
-        try {
-            val jsch = JSch()
-            val session: Session = jsch.getSession(username, host, 22)
-            session.setPassword(password)
-            val config = Properties()
-            config["StrictHostKeyChecking"] = "no"
-            // Disable compression
-            config["compression.s2c"] = "none"
-            config["compression.c2s"] = "none"
-
-            session.setConfig(config)
-            session.timeout = 5000
-            session.connect()
-            session.disconnect()
-            true
-        } catch (e: Exception) {
-            Log.e("FSPSender", "SSH connection failed", e)
-            false
-        }
-    }
 
 data class ScanResult(
     val files: Int,
