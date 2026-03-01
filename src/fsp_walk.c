@@ -128,6 +128,21 @@ int fsp_walk(const char *root_path,
 
 
 
+static int cmp_file_entry_by_name(const void *a, const void *b)
+{
+    const fsp_file_entry_t *fa = a;
+    const fsp_file_entry_t *fb = b;
+    return strcmp(fa->name, fb->name);
+}
+
+static int cmp_dir_entry_by_name(const void *a, const void *b)
+{
+    const fsp_dir_entry_t *da = a;
+    const fsp_dir_entry_t *db = b;
+    return strcmp(da->name, db->name);
+}
+
+
 /* ------------------------------------------------------------------------
  * Internal recursive DFS walker (handles junctions / symlinks to prevent loops)
  * ------------------------------------------------------------------------ */
@@ -237,6 +252,24 @@ int fsp_walk_dir_recursive(const char *root_path,
             }
         }
     }
+
+    // --- Sort files by name ---
+    if (state->entries.num_files > 1) {
+        qsort(state->entries.files,
+            state->entries.num_files,
+            sizeof(fsp_file_entry_t),
+            cmp_file_entry_by_name);
+    }
+
+    // --- Sort directories by name ---
+    if (dir_count > 1) {
+        qsort(dir_array,
+            dir_count,
+            sizeof(fsp_dir_entry_t),
+            cmp_dir_entry_by_name);
+    }
+
+
 
     // --- Call file batching callback for this directory ---
     if ( state->mode == FSP_WALK_MODE_RUN ) {
