@@ -38,12 +38,10 @@ data class FSPWalkerState(
     // Sender mode
     // var senderMode: FSPSendMode? = null, // TODO: FIXME
 
-    // Optional user data (e.g., sender context)
-    var userData: Any? = null,
+
 
     // File buffer
     var fileBuf: ByteArray, // ? = ByteArray(FILE_BUF_SIZE), // Allocate 16 MB
-    var fileBufSize: Int = FILE_BUF_SIZE,
 
     // Protocol writer buffer
     // var protoWriteBuf: FspBufWriter? = null, // TODO: FIXME
@@ -63,10 +61,4 @@ data class FSPWalkerState(
         const val FILE_BUF_SIZE = 16 * 1024 * 1024   // 16 MB
     }
 
-    init {
-        // Optional: set userData to self by default, like in C code
-        if (userData == null) {
-            userData = this
-        }
-    }
 }
