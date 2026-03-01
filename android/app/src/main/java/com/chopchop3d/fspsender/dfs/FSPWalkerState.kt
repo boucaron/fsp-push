@@ -17,7 +17,7 @@ data class FSPWalkerState(
     var entries: List<FSPFileEntry> = emptyList(),
 
     // Current batch tracking
-    var currentFiles: Int = 0,
+    var currentFiles: Long = 0L,
     var currentBytes: Long = 0L,
     var flushNeeded: Boolean = false,
 
@@ -29,7 +29,7 @@ data class FSPWalkerState(
     var maxDepth: Int = FSP_MAX_WALK_DEPTH, // Protocol limit
 
     // Batching thresholds
-    var maxFiles: Int = FSP_MAX_FILES_PER_LIST,
+    var maxFiles: Long = FSP_MAX_FILES_PER_LIST,
     var maxBytes: Long = FSP_MAX_FILE_LIST_BYTES,
 
     // Mode of operation

@@ -49,6 +49,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import com.chopchop3d.fspsender.dfs.DirectoryScanner
 import com.chopchop3d.fspsender.ui.theme.FSPSenderTheme
 import com.chopchop3d.fspsender.ui.theme.ZenburnButton
 import kotlinx.coroutines.launch
