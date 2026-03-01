@@ -15,6 +15,20 @@ class SshHelper {
         const val TEST_TIMEOUT = 5000 // 5 s
         const val TEST_DELAY = 50L // 50 ms
         const val SSH_DEFAULT_PORT = 22
+
+        const val CHANNEL_EXEC = "exec"
+        const val LOG_TAG = "SshHelper"
+    }
+
+
+    fun createTestConfig(): Properties {
+        val config = Properties()
+
+        // Disable compression
+        config["compression.s2c"] = "none"
+        config["compression.c2s"] = "none"
+
+        return config
     }
 
 
@@ -29,20 +43,14 @@ class SshHelper {
                 val session: Session = jsch.getSession(username, host, port)
                 session.setPassword(password)
 
-                val config = Properties()
-                config["StrictHostKeyChecking"] = "no"
-
-                // Disable compression
-                config["compression.s2c"] = "none"
-                config["compression.c2s"] = "none"
-
+                val config = createTestConfig()
                 session.setConfig(config)
                 session.timeout = TEST_TIMEOUT
                 session.connect()
                 session.disconnect()
                 true
             } catch (e: Exception) {
-                Log.e("SshHelper", "SSH connection failed", e)
+                Log.e(LOG_TAG, "SSH connection failed", e)
                 false
             }
         }
@@ -67,15 +75,12 @@ class SshHelper {
             session = jsch.getSession(username, host, port)
             session.setPassword(password)
 
-            val config = Properties().apply {
-                put("StrictHostKeyChecking", "no")
-            }
-
+            val config = createTestConfig()
             session.setConfig(config)
             session.timeout = TEST_TIMEOUT
             session.connect()
 
-            channel = session.openChannel("exec") as ChannelExec
+            channel = session.openChannel(CHANNEL_EXEC) as ChannelExec
 
             // Safe quoting of directory
             val command = "test -d \"${targetDirectory.replace("\"", "\\\"")}\""
@@ -96,14 +101,14 @@ class SshHelper {
             errorStream?.bufferedReader()?.use { reader ->
                 val errorOutput = reader.readText()
                 if (errorOutput.isNotBlank()) {
-                    Log.e("SshHelper", "SSH stderr: $errorOutput")
+                    Log.e(LOG_TAG, "SSH stderr: $errorOutput")
                 }
             }
 
             exitStatus == 0  // 0 = directory exists
 
         } catch (e: Exception) {
-            Log.e("SshHelper", "Directory check failed", e)
+            Log.e(LOG_TAG, "Directory check failed", e)
             false
         } finally {
             try {
@@ -119,7 +124,7 @@ class SshHelper {
         command: String
     ): Int {
 
-        val channel = session.openChannel("exec") as ChannelExec
+        val channel = session.openChannel(CHANNEL_EXEC) as ChannelExec
         channel.setCommand(command)
 
         val errorStream = channel.errStream
@@ -134,7 +139,7 @@ class SshHelper {
         errorStream?.bufferedReader()?.use { reader ->
             val errorOutput = reader.readText()
             if (errorOutput.isNotBlank()) {
-                Log.e("SshHelper", "SSH stderr: $errorOutput")
+                Log.e(LOG_TAG, "SSH stderr: $errorOutput")
             }
         }
 
@@ -157,9 +162,7 @@ class SshHelper {
             session = jsch.getSession(username, host, port)
             session.setPassword(password)
 
-            val config = Properties().apply {
-                put("StrictHostKeyChecking", "no")
-            }
+            val config = createTestConfig()
 
             session.setConfig(config)
             session.timeout = TEST_TIMEOUT
@@ -168,24 +171,24 @@ class SshHelper {
             // ---------- First command: which ----------
             val whichExit = executeCommand(session, "which fsp-recv")
             if (whichExit != 0) {
-                Log.e("SshHelper", "fsp-recv not found in PATH")
+                Log.e(LOG_TAG, "fsp-recv not found in PATH")
             }
             val whichExit2 = executeCommand(session, "which fsp-recv.exe")
             if (whichExit2 != 0) {
-                Log.e("SshHelper", "fsp-recv.exe not found in PATH")
+                Log.e(LOG_TAG, "fsp-recv.exe not found in PATH")
             }
 
             // ---------- Second command: version ----------
             val versionExit = executeCommand(session, "fsp-recv --version")
             if (versionExit != 0) {
-                Log.e("SshHelper", "fsp-recv exists but --version failed")
+                Log.e(LOG_TAG, "fsp-recv exists but --version failed")
                 return@withContext false
             }
 
             true
 
         } catch (e: Exception) {
-            Log.e("SshHelper", "FSP check failed", e)
+            Log.e(LOG_TAG, "FSP check failed", e)
             false
         } finally {
             try {
