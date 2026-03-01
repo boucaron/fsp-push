@@ -10,11 +10,19 @@ import kotlinx.coroutines.withContext
 import java.util.Properties
 
 class SshHelper {
+
+    companion object {
+        const val TEST_TIMEOUT = 5000 // 5 s
+        const val TEST_DELAY = 50L // 50 ms
+        const val SSH_DEFAULT_PORT = 22
+    }
+
+
     /**
      * Tests SSH connectivity to a host.
      * Returns true if connection succeeds, false otherwise.
      */
-    suspend fun testConnection(host: String, username: String, password: String, port: Int = 22): Boolean =
+    suspend fun testConnection(host: String, username: String, password: String, port: Int = SSH_DEFAULT_PORT): Boolean =
         withContext(Dispatchers.IO) {
             try {
                 val jsch = JSch()
@@ -29,7 +37,7 @@ class SshHelper {
                 config["compression.c2s"] = "none"
 
                 session.setConfig(config)
-                session.timeout = 5000
+                session.timeout = TEST_TIMEOUT
                 session.connect()
                 session.disconnect()
                 true
@@ -48,7 +56,7 @@ class SshHelper {
         host: String,
         username: String,
         password: String,
-        port: Int = 22
+        port: Int = SSH_DEFAULT_PORT
     ): Boolean = withContext(Dispatchers.IO) {
 
         var session: Session? = null
@@ -64,7 +72,7 @@ class SshHelper {
             }
 
             session.setConfig(config)
-            session.timeout = 5000
+            session.timeout = TEST_TIMEOUT
             session.connect()
 
             channel = session.openChannel("exec") as ChannelExec
@@ -80,7 +88,7 @@ class SshHelper {
 
             // Wait until command finishes
             while (!channel.isClosed) {
-                delay(50)
+                delay(TEST_DELAY)
             }
 
             val exitStatus = channel.exitStatus
@@ -118,7 +126,7 @@ class SshHelper {
         channel.connect()
 
         while (!channel.isClosed) {
-            delay(50)
+            delay(TEST_DELAY)
         }
 
         val exitStatus = channel.exitStatus
@@ -139,7 +147,7 @@ class SshHelper {
         host: String,
         username: String,
         password: String,
-        port: Int = 22
+        port: Int = SSH_DEFAULT_PORT
     ): Boolean = withContext(Dispatchers.IO) {
 
         var session: Session? = null
@@ -154,7 +162,7 @@ class SshHelper {
             }
 
             session.setConfig(config)
-            session.timeout = 5000
+            session.timeout = TEST_TIMEOUT
             session.connect()
 
             // ---------- First command: which ----------
