@@ -42,7 +42,7 @@ data class FSPWalkerState(
     var userData: Any? = null,
 
     // File buffer
-    var fileBuf: ByteArray? = ByteArray(FILE_BUF_SIZE), // Allocate 16 MB
+    var fileBuf: ByteArray, // ? = ByteArray(FILE_BUF_SIZE), // Allocate 16 MB
     var fileBufSize: Int = FILE_BUF_SIZE,
 
     // Protocol writer buffer

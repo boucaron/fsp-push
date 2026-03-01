@@ -14,9 +14,10 @@ data class ScanResult(
     val size: Long
 )
 
-class DirectoryScanner(private val context: ComponentActivity) {
+class DirectoryScanner(private val context: ComponentActivity,
+                       val walkerState: FSPWalkerState) {
 
-    private val buffer = ByteArray(16 * 1024 * 1024)
+
     private val visitedDirs = mutableSetOf<String>()
 
     suspend fun scan(
@@ -71,7 +72,7 @@ class DirectoryScanner(private val context: ComponentActivity) {
                     val fileUri =
                         DocumentsContract.buildDocumentUriUsingTree(treeUri, childDocId)
                     try {
-                        val sha256 = computeSHA256(fileUri)
+                        val sha256 = computeSHA256(fileUri, walkerState)
                         Log.v("FSPSender", "File: $fileUri, SHA256: $sha256")
                     } catch (e: Exception) {
                         Log.e("FSPSender", "Error hashing file $fileUri", e)
@@ -91,13 +92,13 @@ class DirectoryScanner(private val context: ComponentActivity) {
         ScanResult(totalFiles, totalDirs, totalSize)
     }
 
-    private suspend fun computeSHA256(fileUri: Uri): String = withContext(Dispatchers.IO) {
+    private suspend fun computeSHA256(fileUri: Uri, walkerState: FSPWalkerState): String = withContext(Dispatchers.IO) {
         val digest = MessageDigest.getInstance("SHA-256")
         val stream = context.contentResolver.openInputStream(fileUri)
             ?: throw Exception("Cannot open $fileUri")
         stream.use {
             var read: Int
-            while (it.read(buffer).also { read = it } != -1) digest.update(buffer, 0, read)
+            while (it.read(walkerState.fileBuf).also { read = it } != -1) digest.update(walkerState.fileBuf, 0, read)
         }
         digest.digest().joinToString("") { "%02x".format(it) }
     }

@@ -50,9 +50,15 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.chopchop3d.fspsender.dfs.DirectoryScanner
+import com.chopchop3d.fspsender.dfs.FSPWalkerMode
+import com.chopchop3d.fspsender.dfs.FSPWalkerState
+import com.chopchop3d.fspsender.dfs.FSPWalkerState.Companion.FILE_BUF_SIZE
+import com.chopchop3d.fspsender.dfs.FSPWalkerState.Companion.FSP_MAX_WALK_DEPTH
+import com.chopchop3d.fspsender.protocol.FSPProtocol
 import com.chopchop3d.fspsender.ui.theme.FSPSenderTheme
 import com.chopchop3d.fspsender.ui.theme.ZenburnButton
 import kotlinx.coroutines.launch
+import java.time.Instant
 
 
 class MainActivity : ComponentActivity() {
@@ -73,6 +79,28 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        val walkerState = FSPWalkerState(
+            "",
+            "",
+            emptyList(),
+            0L,
+            0L,
+            false,
+            0,
+            FSP_MAX_WALK_DEPTH,
+            FSPProtocol.FSP_MAX_FILES_PER_LIST,
+            FSPProtocol.FSP_MAX_FILE_LIST_BYTES,
+            FSPWalkerMode.DRY_RUN,
+            null,
+            ByteArray(FILE_BUF_SIZE),
+            FILE_BUF_SIZE,
+            0L,
+            0L,
+            0L,
+            Instant.now(),
+            0L,
+            0.0)
+
 
         setContent {
             FSPSenderTheme {
@@ -85,7 +113,7 @@ class MainActivity : ComponentActivity() {
                         onPickDirectory = { openDirectory.launch(null) },
                         selectedUri = selectedUri,
                         onScanDirectory = { uri, dryRun, onProgress ->
-                            val scanner = DirectoryScanner(this)
+                            val scanner = DirectoryScanner(this, walkerState)
                             scanner.scan(uri, dryRun, onProgress)
                         },
                         context = this
