@@ -89,9 +89,10 @@ class DirectoryScanner(
                 walkerState.currentBytes += size
 
 
-                val fileEntry = FSPFileEntry(name = fileName, size = size)
+                val fileEntry = FSPFileEntry(name = fileName, size = size, treeUri = treeUri, childDocId = childDocId)
                 (walkerState.entries as MutableList).add(fileEntry)
 
+                /*
                 if (!dryRun) {
                     val fileUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, childDocId)
                     try {
@@ -100,23 +101,29 @@ class DirectoryScanner(
                     } catch (e: Exception) {
                         Log.e("FSPSender", "Error hashing file $fileUri", e)
                     }
-                } else {
-                    walkerState.totalFiles++
-
-
-                    // UI slow speed refresh
-                    if ( walkerState.totalBytes % 10L == 0L ) {
-                        walkerState.triggerDisplay ++;
-                    }
-                    else if ( (walkerState.totalBytes + size)/ tenMB  > (walkerState.totalBytes/tenMB)) {
-                        walkerState.triggerDisplay ++;
-                    }
-
-                    walkerState.totalBytes += size
+                } else { */
+                if ( dryRun) {
+                  walkerState.totalFiles++
                 }
+
+
+
+                // UI slow speed refresh
+                if ( walkerState.totalBytes % 10L == 0L ) {
+                    walkerState.triggerDisplay ++;
+                }
+                else if ( (walkerState.totalBytes + size)/ tenMB  > (walkerState.totalBytes/tenMB)) {
+                    walkerState.triggerDisplay ++;
+                }
+
+                walkerState.totalBytes += size
+
 
                 onProgress?.invoke(walkerState)
             }
+
+            processDirectory(walkerState);
+
 
             // Recurse into directories
             for ((dirId, dirName) in dirsList) {
@@ -138,6 +145,18 @@ class DirectoryScanner(
         }
 
         walkerState
+    }
+
+
+    private fun processDirectory(walkerState: FSPWalkerState) {
+        // Send Directory CMD
+        // For each File Batch
+        // Send Metadata File - NO SHA
+        // Send File Data & Compute SHA
+        // Send Metadata File - SHA
+
+
+
     }
 
     /**
