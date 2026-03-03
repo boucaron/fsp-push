@@ -11,33 +11,15 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
@@ -49,19 +31,42 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import com.chopchop3d.fspsender.dfs.DirectoryScanner
-import com.chopchop3d.fspsender.dfs.FSPWalkerMode
-import com.chopchop3d.fspsender.dfs.FSPWalkerState
+import com.chopchop3d.fspsender.dfs.*
 import com.chopchop3d.fspsender.dfs.FSPWalkerState.Companion.FILE_BUF_SIZE
+import com.chopchop3d.fspsender.dfs.FSPWalkerState.Companion.FSP_MAX_FILE_LIST_BYTES
+import com.chopchop3d.fspsender.dfs.FSPWalkerState.Companion.FSP_MAX_FILES_PER_LIST
 import com.chopchop3d.fspsender.dfs.FSPWalkerState.Companion.FSP_MAX_WALK_DEPTH
-import com.chopchop3d.fspsender.protocol.FSPProtocol
 import com.chopchop3d.fspsender.ui.theme.FSPSenderTheme
 import com.chopchop3d.fspsender.ui.theme.ZenburnButton
 import kotlinx.coroutines.launch
 import java.time.Instant
 
-
 class MainActivity : ComponentActivity() {
+
+    // Activity-level source-of-truth walker state
+    private var walkerState by mutableStateOf(
+        FSPWalkerState().apply {
+            fullPath = ""
+            relPath = ""
+            entries = mutableListOf()
+            currentFiles = 0L
+            currentBytes = 0L
+            flushNeeded = false
+            dryRun = FSPDryRunStats()
+            currentDepth = 0
+            maxDepth = FSP_MAX_WALK_DEPTH
+            maxBytes = FSP_MAX_FILE_LIST_BYTES
+            maxFiles = FSP_MAX_FILES_PER_LIST
+            mode = FSPWalkerMode.DRY_RUN
+            fileBuf = ByteArray(FILE_BUF_SIZE)
+            totalFiles = 0L
+            totalBytes = 0L
+            previousTotalBytes = 0L
+            lastSpeedTimestamp = Instant.now()
+            lastSpeedBytes = 0L
+            lastThroughput = 0.0
+        }
+    )
 
     private val openDirectory =
         registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
@@ -79,30 +84,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        val walkerState = FSPWalkerState(
-            "",
-            "",
-            emptyList(),
-            0L,
-            0L,
-            false,
-            0,
-            FSP_MAX_WALK_DEPTH,
-            FSPProtocol.FSP_MAX_FILES_PER_LIST,
-            FSPProtocol.FSP_MAX_FILE_LIST_BYTES,
-            FSPWalkerMode.DRY_RUN,
-            ByteArray(FILE_BUF_SIZE),
-            0L,
-            0L,
-            0L,
-            Instant.now(),
-            0L,
-            0.0)
-
 
         setContent {
             FSPSenderTheme {
-                // Root Surface ensures dark background
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -110,6 +94,8 @@ class MainActivity : ComponentActivity() {
                     MainScreen(
                         onPickDirectory = { openDirectory.launch(null) },
                         selectedUri = selectedUri,
+                        walkerState = walkerState,
+                        onWalkerStateChange = { updated -> walkerState = updated },
                         onScanDirectory = { uri, dryRun, onProgress ->
                             val scanner = DirectoryScanner(this, walkerState)
                             scanner.scan(uri, dryRun, onProgress)
@@ -127,15 +113,22 @@ class MainActivity : ComponentActivity() {
 fun MainScreen(
     onPickDirectory: () -> Unit,
     selectedUri: Uri?,
-    onScanDirectory: suspend (Uri, Boolean, (files: Int, dirs: Int, size: Long) -> Unit) -> Unit,
+    walkerState: FSPWalkerState,
+    onWalkerStateChange: (FSPWalkerState) -> Unit,
+    onScanDirectory: suspend (Uri, Boolean, (walkerState: FSPWalkerState) -> Unit) -> Unit,
     context: ComponentActivity
 ) {
-    var fileCount by remember { mutableStateOf(0) }
-    var dirCount by remember { mutableStateOf(0) }
-    var totalSize by remember { mutableStateOf(0L) }
-    var elapsedTime by remember { mutableStateOf(0L) }
+    val scope = rememberCoroutineScope()
     var statusMessage by remember { mutableStateOf("Idle") }
     var dry_run by remember { mutableStateOf(true) }
+
+    // Compose-local copy of walker state for UI
+    var walkerStateLocal by remember { mutableStateOf(walkerState) }
+
+    // Derived UI values
+    val fileCount = walkerStateLocal.totalFiles
+    val totalSize = walkerStateLocal.totalBytes
+    var elapsedTime by remember { mutableStateOf(0L) }
 
     // SSH fields
     var sshHost by remember { mutableStateOf("") }
@@ -143,22 +136,12 @@ fun MainScreen(
     var sshPassword by remember { mutableStateOf("") }
     var sshStatus by remember { mutableStateOf("SSH status: Idle") }
     var passwordVisible by remember { mutableStateOf(false) }
-
     var targetDirectory by remember { mutableStateOf("") }
 
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
-    val scope = rememberCoroutineScope()
 
     val sshHelper = remember { SshHelper() }
-
-    fun updateUI(files: Int, dirs: Int, size: Long, elapsedMs: Long) {
-        fileCount = files
-        dirCount = dirs
-        totalSize = size
-        elapsedTime = elapsedMs
-    }
-
     val scrollState = rememberScrollState()
 
     Column(
@@ -169,59 +152,74 @@ fun MainScreen(
     ) {
         // Directory selection
         Button(onClick = { onPickDirectory() }) {
-            Text("Select Directory")
+            Text("Select Source Directory")
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
         if (selectedUri != null) {
-            ZenburnButton(
-                onClick = {
-                    Log.e("FSPSender", "Dry-run, starting coroutine")
-                    scope.launch {
-                        statusMessage = "Starting dry-run..."
-                        fileCount = 0
-                        dirCount = 0
-                        totalSize = 0L
-                        elapsedTime = 0L
-                        dry_run = true
-                        val startTime = System.currentTimeMillis()
-
-                        onScanDirectory(selectedUri, dry_run) { f, d, s ->
-                            val elapsedMs = System.currentTimeMillis() - startTime
-                            fileCount = f
-                            dirCount = d
-                            totalSize = s
-                            elapsedTime = elapsedMs
-                        }
-
-                        statusMessage = "Dry-run completed"
-                    }
-                }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("Dry-run")
+
+                ZenburnButton(
+                    onClick = {
+                        Log.e("FSPSender", "Dry-run, starting coroutine")
+                        scope.launch {
+                            statusMessage = "Starting dry-run..."
+                            elapsedTime = 0L
+                            dry_run = true
+                            val startTime = System.currentTimeMillis()
+
+                            onScanDirectory(selectedUri, dry_run) { updatedState ->
+                                walkerStateLocal = updatedState
+                                onWalkerStateChange(updatedState)
+                                elapsedTime = System.currentTimeMillis() - startTime
+                            }
+
+                            statusMessage = "Dry-run completed"
+                        }
+                    }
+                ) {
+                    Text("Dry-run")
+                }
+
+                ZenburnButton(
+                    onClick = {
+                        Log.e("FSPSender", "Run, starting coroutine")
+                        scope.launch {
+                            statusMessage = "Starting transfer..."
+                            elapsedTime = 0L
+                            dry_run = false
+                            val startTime = System.currentTimeMillis()
+
+                            onScanDirectory(selectedUri, dry_run) { updatedState ->
+                                walkerStateLocal = updatedState
+                                onWalkerStateChange(updatedState)
+                                elapsedTime = System.currentTimeMillis() - startTime
+                            }
+
+                            statusMessage = "Transfer completed"
+                        }
+                    }
+                ) {
+                    Text("Run")
+                }
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
 
-        Text("Status: $statusMessage")
         Spacer(modifier = Modifier.height(8.dp))
-        Text("Files: $fileCount")
-        Text("Directories: $dirCount")
-        Text("Total size: $totalSize bytes")
-        Spacer(modifier = Modifier.height(8.dp))
-        Text("Elapsed time: ${elapsedTime / 1000}.${(elapsedTime % 1000) / 10} s")
-        Text(
-            "Mean throughput: ${
-                if (!dry_run && elapsedTime > 0) {
-                    val mb = totalSize.toDouble() / (1024 * 1024)
-                    val sec = elapsedTime.toDouble() / 1000
-                    String.format("%.2f MB/s", mb / sec)
-                } else {
-                    "0 MB/s"
-                }
-            }"
+        OutlinedTextField(
+            value = targetDirectory,
+            onValueChange = { targetDirectory = it },
+            label = { Text("Target Directory") },
+            modifier = Modifier.fillMaxWidth(),
+            keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Next),
+            keyboardActions = KeyboardActions(
+                onNext = { focusManager.moveFocus(FocusDirection.Down) }
+            )
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -272,17 +270,6 @@ fun MainScreen(
                 )
             )
             Spacer(modifier = Modifier.height(8.dp))
-            OutlinedTextField(
-                value = targetDirectory,
-                onValueChange = { targetDirectory = it },
-                label = { Text("Target Directory") },
-                modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Next),
-                keyboardActions = KeyboardActions(
-                    onNext = { focusManager.moveFocus(FocusDirection.Down) }
-                )
-            )
-            Spacer(modifier = Modifier.height(8.dp))
 
             ZenburnButton(onClick = {
                 scope.launch {
@@ -290,45 +277,76 @@ fun MainScreen(
                     val success = sshHelper.testConnection(sshHost, sshUser, sshPassword)
                     sshStatus = if (success) "SSH status: Connected!" else "SSH status: Failed"
                 }
-            }) {
-                Text("Test SSH Connection")
-            }
+            }) { Text("Test SSH Connection") }
+
             Spacer(modifier = Modifier.height(8.dp))
+
             ZenburnButton(onClick = {
                 scope.launch {
                     sshStatus = "Connecting..."
-                    val success = sshHelper.checkTargetDirectory(
-                        targetDirectory,
-                        sshHost,
-                        sshUser,
-                        sshPassword
-                    )
-                    sshStatus =
-                        if (success) "SSH: target directory exists" else "SSH: target directory does not exist"
+                    val success = sshHelper.checkTargetDirectory(targetDirectory, sshHost, sshUser, sshPassword)
+                    sshStatus = if (success) "SSH: target directory exists" else "SSH: target directory does not exist"
                 }
-            }) {
-                Text("Test target directory")
-            }
+            }) { Text("Test target directory") }
+
             Spacer(modifier = Modifier.height(8.dp))
+
             ZenburnButton(onClick = {
                 scope.launch {
                     sshStatus = "Connecting..."
                     val success = sshHelper.checkFSPReceiverExists(sshHost, sshUser, sshPassword)
-                    sshStatus =
-                        if (success) "SSH: fsp-recv exists on target host" else "SSH: fsp-recv does not exist or not in path"
+                    sshStatus = if (success) "SSH: fsp-recv exists on target host" else "SSH: fsp-recv does not exist or not in path"
                 }
-            }) {
-                Text("Test fsp-recv Connection")
-            }
+            }) { Text("Test fsp-recv Connection") }
+
             Spacer(modifier = Modifier.height(8.dp))
             Text(sshStatus)
         }
 
+        Spacer(modifier = Modifier.height(16.dp))
 
+        Accordion(title = "Mics Settings") {
+            var throughputText by remember {
+                mutableStateOf(walkerState.dryRun.simulationThroughput.toString())
+            }
+
+            OutlinedTextField(
+                value = throughputText,
+                onValueChange = { input ->
+                    throughputText = input
+                    input.toDoubleOrNull()?.let {
+                        walkerState.dryRun.simulationThroughput = it
+                    }
+                },
+                label = { Text("Simulation Throughput (MB/s)") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Status UI
+        Text("Status: $statusMessage")
+        Spacer(modifier = Modifier.height(8.dp))
+        Text("Files: $fileCount")
+        Text("Total size: $totalSize bytes")
+        Spacer(modifier = Modifier.height(8.dp))
+        Text("Simulated time: ${walkerState.dryRun.simulationEvaluation} s")
+        Text("Elapsed time: ${elapsedTime / 1000}.${(elapsedTime % 1000) / 10} s")
+        Text(
+            "Mean throughput: ${
+                if (!dry_run && elapsedTime > 0) {
+                    val mb = totalSize.toDouble() / (1024 * 1024)
+                    val sec = elapsedTime.toDouble() / 1000
+                    String.format("%.2f MB/s", mb / sec)
+                } else {
+                    "0 MB/s"
+                }
+            }"
+        )
     }
 }
-
-
 
 @Composable
 fun Accordion(
@@ -346,10 +364,8 @@ fun Accordion(
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
+            modifier = Modifier.fillMaxWidth()
         ) {
-            // Header / clickable title
             Text(
                 text = title + if (expanded) " ▲" else " ▼",
                 modifier = Modifier
@@ -360,7 +376,6 @@ fun Accordion(
                 color = MaterialTheme.colorScheme.onSurface
             )
 
-            // Content only visible when expanded
             if (expanded) {
                 Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
                     content()

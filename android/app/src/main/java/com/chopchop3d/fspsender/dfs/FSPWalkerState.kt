@@ -14,7 +14,7 @@ data class FSPWalkerState(
     var relPath: String = "",
 
     // Current file entries (directories are handled by the caller)
-    var entries: List<FSPFileEntry> = emptyList(),
+    var entries: MutableList<FSPFileEntry> = mutableListOf<FSPFileEntry>(),
 
     // Current batch tracking
     var currentFiles: Long = 0L,
@@ -22,7 +22,7 @@ data class FSPWalkerState(
     var flushNeeded: Boolean = false,
 
     // Dry-run stats (mandatory)
-    // var dryRun: FSPDryRunStats, // TODO: FIXME
+    var dryRun: FSPDryRunStats = FSPDryRunStats(),
 
     // Depth tracking
     var currentDepth: Int = 0,
@@ -41,7 +41,7 @@ data class FSPWalkerState(
 
 
     // File buffer
-    var fileBuf: ByteArray, // ? = ByteArray(FILE_BUF_SIZE), // Allocate 16 MB
+    var fileBuf: ByteArray = ByteArray(FILE_BUF_SIZE), // Allocate 16 MB
 
     // Protocol writer buffer
     // var protoWriteBuf: FspBufWriter? = null, // TODO: FIXME

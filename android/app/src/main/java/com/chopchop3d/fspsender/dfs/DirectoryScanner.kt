@@ -8,37 +8,53 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.security.MessageDigest
 
-data class ScanResult(
-    val files: Int,
-    val dirs: Int,
-    val size: Long
-)
-
-class DirectoryScanner(private val context: ComponentActivity,
-                       val walkerState: FSPWalkerState) {
-
+/**
+ * Scans directories and updates the FSPWalkerState.
+ */
+class DirectoryScanner(
+    private val context: ComponentActivity,
+    private val walkerState: FSPWalkerState
+) {
 
     private val visitedDirs = mutableSetOf<String>()
 
+    /**
+     * Starts a DFS scan on the given tree URI.
+     *
+     * @param treeUri URI of the root directory.
+     * @param dryRun If true, do not compute SHA256 hashes.
+     * @param onProgress Callback invoked after each file, providing the full walker state.
+     */
     suspend fun scan(
         treeUri: Uri,
-        dry_run: Boolean,
-        onProgress: ((files: Int, dirs: Int, size: Long) -> Unit)? = null
-    ): ScanResult = withContext(Dispatchers.IO) {
+        dryRun: Boolean,
+        onProgress: ((walkerState: FSPWalkerState) -> Unit)? = null
+    ): FSPWalkerState = withContext(Dispatchers.IO) {
 
-        var totalFiles = 0
-        var totalDirs = 0
-        var totalSize = 0L
-
-        suspend fun dfs(docId: String) {
+        suspend fun dfs(docId: String, name: String) {
             if (!visitedDirs.add(docId)) return
+
+            // Respect max depth if configured
+            if (walkerState.maxDepth > 0 && walkerState.currentDepth >= walkerState.maxDepth) {
+                return
+            }
+
+            // Save previous paths (stack behaviour)
+            val previousRel = walkerState.relPath
+            val previousFull = walkerState.fullPath
+
+            // Update paths
+            walkerState.relPath = if (previousRel.isEmpty()) name else "$previousRel/$name"
+            walkerState.fullPath = if (previousFull.isEmpty()) name else "$previousFull/$name"
+
+            // Reset current entries for this folder
+            walkerState.entries = mutableListOf()
+            walkerState.currentDepth++
 
             val filesList = mutableListOf<Triple<String, String, Long>>()
             val dirsList = mutableListOf<Pair<String, String>>()
 
-            val childrenUri =
-                DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, docId)
-
+            val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, docId)
             val projection = arrayOf(
                 DocumentsContract.Document.COLUMN_DOCUMENT_ID,
                 DocumentsContract.Document.COLUMN_MIME_TYPE,
@@ -46,31 +62,37 @@ class DirectoryScanner(private val context: ComponentActivity,
                 DocumentsContract.Document.COLUMN_DISPLAY_NAME
             )
 
-            context.contentResolver.query(childrenUri, projection, null, null, null)
-                ?.use { c ->
-                    while (c.moveToNext()) {
-                        val childDocId = c.getString(0)
-                        val mime = c.getString(1)
-                        val size = c.getLong(2)
-                        val name = c.getString(3)
+            context.contentResolver.query(childrenUri, projection, null, null, null)?.use { c ->
+                while (c.moveToNext()) {
+                    val childDocId = c.getString(0)
+                    val mime = c.getString(1)
+                    val size = c.getLong(2)
+                    val childName = c.getString(3)
 
-                        if (DocumentsContract.Document.MIME_TYPE_DIR == mime)
-                            dirsList.add(childDocId to name)
-                        else
-                            filesList.add(Triple(childDocId, name, size))
+                    if (DocumentsContract.Document.MIME_TYPE_DIR == mime) {
+                        dirsList.add(childDocId to childName)
+                    } else {
+                        filesList.add(Triple(childDocId, childName, size))
                     }
                 }
+            }
 
+            // Sort alphabetically
             filesList.sortBy { it.second.lowercase() }
             dirsList.sortBy { it.second.lowercase() }
 
-            for ((childDocId, _, size) in filesList) {
-                totalFiles++
-                totalSize += size
+            // Process files
+            for ((childDocId, fileName, size) in filesList) {
+                walkerState.currentFiles++
+                walkerState.currentBytes += size
+                walkerState.totalFiles++
+                walkerState.totalBytes += size
 
-                if (!dry_run) {
-                    val fileUri =
-                        DocumentsContract.buildDocumentUriUsingTree(treeUri, childDocId)
+                val fileEntry = FSPFileEntry(name = fileName, size = size)
+                (walkerState.entries as MutableList).add(fileEntry)
+
+                if (!dryRun) {
+                    val fileUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, childDocId)
                     try {
                         val sha256 = computeSHA256(fileUri, walkerState)
                         Log.v("FSPSender", "File: $fileUri, SHA256: $sha256")
@@ -79,27 +101,42 @@ class DirectoryScanner(private val context: ComponentActivity,
                     }
                 }
 
-                onProgress?.invoke(totalFiles, totalDirs, totalSize)
+                onProgress?.invoke(walkerState)
             }
 
-            for ((dirId, _) in dirsList) {
-                totalDirs++
-                dfs(dirId)
+            // Recurse into directories
+            for ((dirId, dirName) in dirsList) {
+                dfs(dirId, dirName)
             }
+
+            walkerState.currentDepth--
+            // Restore previous paths (pop stack)
+            walkerState.relPath = previousRel
+            walkerState.fullPath = previousFull
         }
 
-        dfs(DocumentsContract.getTreeDocumentId(treeUri))
-        ScanResult(totalFiles, totalDirs, totalSize)
+        val rootId = DocumentsContract.getTreeDocumentId(treeUri)
+        dfs(rootId, "")
+
+        walkerState
     }
 
-    private suspend fun computeSHA256(fileUri: Uri, walkerState: FSPWalkerState): String = withContext(Dispatchers.IO) {
-        val digest = MessageDigest.getInstance("SHA-256")
-        val stream = context.contentResolver.openInputStream(fileUri)
-            ?: throw Exception("Cannot open $fileUri")
-        stream.use {
-            var read: Int
-            while (it.read(walkerState.fileBuf).also { read = it } != -1) digest.update(walkerState.fileBuf, 0, read)
+    /**
+     * Computes SHA-256 hash of a file using the walkerState's file buffer.
+     */
+    private suspend fun computeSHA256(fileUri: Uri, walkerState: FSPWalkerState): String =
+        withContext(Dispatchers.IO) {
+            val digest = MessageDigest.getInstance("SHA-256")
+            val stream = context.contentResolver.openInputStream(fileUri)
+                ?: throw Exception("Cannot open $fileUri")
+
+            stream.use {
+                var read: Int
+                while (it.read(walkerState.fileBuf).also { read = it } != -1) {
+                    digest.update(walkerState.fileBuf, 0, read)
+                }
+            }
+
+            digest.digest().joinToString("") { "%02x".format(it) }
         }
-        digest.digest().joinToString("") { "%02x".format(it) }
-    }
 }
