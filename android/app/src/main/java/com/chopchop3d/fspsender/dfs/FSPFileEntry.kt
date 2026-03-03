@@ -1,5 +1,7 @@
 package com.chopchop3d.fspsender.dfs
 
+import android.net.Uri
+
 /**
  * Represents a single file in the DFS walker.
  */
@@ -19,7 +21,12 @@ data class FSPFileEntry(
     var capChunks: Long = 0L,            // Allocated capacity of chunk_hashes
     var chunkHashes: Array<ByteArray> = emptyArray(), // Each ByteArray is SHA256_DIGEST_LENGTH
 
-) {
+
+    // ANDROID Specifics Run-Time ONLY
+    var treeUri: Uri,
+    var childDocId: String,
+
+    ) {
     companion object {
         const val NAME_MAX = 255   // Same as typical NAME_MAX
         const val SHA256_DIGEST_LENGTH = 32
