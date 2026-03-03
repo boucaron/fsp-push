@@ -31,6 +31,8 @@ class DirectoryScanner(
         onProgress: ((walkerState: FSPWalkerState) -> Unit)? = null
     ): FSPWalkerState = withContext(Dispatchers.IO) {
 
+        var tenMB = 10*1024*1024
+
         suspend fun dfs(docId: String, name: String) {
             if (!visitedDirs.add(docId)) return
 
@@ -85,8 +87,7 @@ class DirectoryScanner(
             for ((childDocId, fileName, size) in filesList) {
                 walkerState.currentFiles++
                 walkerState.currentBytes += size
-                walkerState.totalFiles++
-                walkerState.totalBytes += size
+
 
                 val fileEntry = FSPFileEntry(name = fileName, size = size)
                 (walkerState.entries as MutableList).add(fileEntry)
@@ -99,6 +100,19 @@ class DirectoryScanner(
                     } catch (e: Exception) {
                         Log.e("FSPSender", "Error hashing file $fileUri", e)
                     }
+                } else {
+                    walkerState.totalFiles++
+
+
+                    // UI slow speed refresh
+                    if ( walkerState.totalBytes % 10L == 0L ) {
+                        walkerState.triggerDisplay ++;
+                    }
+                    else if ( (walkerState.totalBytes + size)/ tenMB  > (walkerState.totalBytes/tenMB)) {
+                        walkerState.triggerDisplay ++;
+                    }
+
+                    walkerState.totalBytes += size
                 }
 
                 onProgress?.invoke(walkerState)
@@ -117,6 +131,11 @@ class DirectoryScanner(
 
         val rootId = DocumentsContract.getTreeDocumentId(treeUri)
         dfs(rootId, "")
+
+        if ( walkerState.currentDepth == 0 ) {
+            walkerState.triggerDisplay ++;
+            walkerState.dryRun.computeSimulationThroughput(walkerState.totalBytes.toDouble())
+        }
 
         walkerState
     }

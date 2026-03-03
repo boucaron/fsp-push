@@ -8,6 +8,12 @@ data class FSPDryRunStats(
     var simulationEvaluation: Double = 0.0, // seconds
 ) {
 
+    fun computeSimulationThroughput(size: Double) {
+        if ( simulationThroughput > 0.0 ) {
+            simulationEvaluation = size / 1024 / 1024 / simulationThroughput;
+        }
+    }
+
     fun formattedDuration(): String =
         Formatter.formatDuration(simulationEvaluation)
 

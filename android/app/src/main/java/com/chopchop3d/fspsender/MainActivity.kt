@@ -126,8 +126,11 @@ fun MainScreen(
     var walkerStateLocal by remember { mutableStateOf(walkerState) }
 
     // Derived UI values
-    val fileCount = walkerStateLocal.totalFiles
-    val totalSize = walkerStateLocal.totalBytes
+    var triggerDisplay = walkerStateLocal.triggerDisplay
+    var displayTotalFiles by remember { mutableStateOf(0L) }
+    var displayTotalSize by remember { mutableStateOf("") }
+    var displayTotalSizeLong by remember { mutableStateOf(0L) }
+    var displaySimulatedTime by remember { mutableStateOf("") }
     var elapsedTime by remember { mutableStateOf(0L) }
 
     // SSH fields
@@ -171,6 +174,10 @@ fun MainScreen(
                             elapsedTime = 0L
                             dry_run = true
                             val startTime = System.currentTimeMillis()
+
+                            // Reset
+                            walkerStateLocal.totalBytes = 0;
+                            walkerStateLocal.totalFiles = 0;
 
                             onScanDirectory(selectedUri, dry_run) { updatedState ->
                                 walkerStateLocal = updatedState
@@ -329,15 +336,23 @@ fun MainScreen(
         // Status UI
         Text("Status: $statusMessage")
         Spacer(modifier = Modifier.height(8.dp))
-        Text("Files: $fileCount")
-        Text("Total size: $totalSize bytes")
+
+        LaunchedEffect(triggerDisplay) {
+            displayTotalSize = FSPDryRunStats.formatSize(walkerState.totalBytes)
+            displayTotalFiles = walkerState.totalFiles
+            displayTotalSizeLong = walkerState.totalBytes
+            displaySimulatedTime = FSPDryRunStats.Formatter.formatDuration(walkerState.dryRun.simulationEvaluation)
+        }
+
+        Text("Files: $displayTotalFiles")
+        Text("Total size: $displayTotalSize")
         Spacer(modifier = Modifier.height(8.dp))
-        Text("Simulated time: ${walkerState.dryRun.simulationEvaluation} s")
+        Text("Simulated time: $displaySimulatedTime")
         Text("Elapsed time: ${elapsedTime / 1000}.${(elapsedTime % 1000) / 10} s")
         Text(
             "Mean throughput: ${
                 if (!dry_run && elapsedTime > 0) {
-                    val mb = totalSize.toDouble() / (1024 * 1024)
+                    val mb = displayTotalSizeLong.toDouble() / (1024 * 1024)
                     val sec = elapsedTime.toDouble() / 1000
                     String.format("%.2f MB/s", mb / sec)
                 } else {
