@@ -6,7 +6,9 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import com.chopchop3d.fspsender.SshConfig
 import com.chopchop3d.fspsender.SshSender
+import com.chopchop3d.fspsender.protocol.FSPProtocol
 import com.chopchop3d.fspsender.protocol.FSPSendDirectory
+import com.chopchop3d.fspsender.protocol.FSPSendFileList
 import com.chopchop3d.fspsender.protocol.FSPSendMode
 import com.chopchop3d.fspsender.protocol.FSPSendStatBytes
 import com.chopchop3d.fspsender.protocol.FSPSendStatFiles
@@ -14,6 +16,8 @@ import com.chopchop3d.fspsender.protocol.FSPSendVersion
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.security.MessageDigest
 
 /**
@@ -209,17 +213,127 @@ class DirectoryScanner(
     private suspend fun processDirectory(walkerState: FSPWalkerState) {
 
         // Send Directory CMD
-        // For each File Batch
-        // Send Metadata File - NO SHA
-        // Send File Data & Compute SHA
-        // Send Metadata File - SHA
+        // Create File Batch
+        //   For each File Batch
+        //   Send Metadata File - NO SHA
+        //   Send File Data & Compute SHA
+        //   Send Metadata File - SHA
 
         sshSender!!.sendText(FSPSendDirectory.sendCommand(walkerState.relPath))
+
+        val batches = createBatches(
+            walkerState.entries,
+            maxFiles = FSPProtocol.FSP_MAX_FILES_PER_LIST,
+            maxBytes = FSPProtocol.FSP_MAX_FILE_LIST_BYTES
+        )
+
+        for ((batchIndex, batch) in batches.withIndex()) {
+            Log.e("Batch", "Processing batch #$batchIndex with ${batch.size} files")
+            processFileBatch(walkerState, batch)
+        }
+
+
+    }
+
+
+    /**
+     * Create file batches based on count and size constraints.
+     */
+    private fun createBatches(
+        entries: List<FSPFileEntry>,
+        maxFiles: Long,
+        maxBytes: Long
+    ): List<List<FSPFileEntry>> {
+        val batches = mutableListOf<MutableList<FSPFileEntry>>()
+        var currentBatch = mutableListOf<FSPFileEntry>()
+        var currentBatchSize = 0L
+
+        for (file in entries) {
+            val fileSize = file.size
+
+            val batchFull = currentBatch.size >= maxFiles || (currentBatchSize + fileSize) > maxBytes
+            if (batchFull) {
+                // Save current batch and start a new one
+                batches.add(currentBatch)
+                currentBatch = mutableListOf()
+                currentBatchSize = 0
+            }
+
+            currentBatch.add(file)
+            currentBatchSize += fileSize
+        }
+
+        // Add the last batch if not empty
+        if (currentBatch.isNotEmpty()) {
+            batches.add(currentBatch)
+        }
+
+        return batches
+    }
+
+
+
+    private suspend fun processFileBatch(
+        walkerState: FSPWalkerState,
+        batch: List<FSPFileEntry>
+    ) {
+
+
+        sshSender!!.sendText(FSPSendFileList.sendCommand())
+        sshSender!!.sendText("FILES: ${batch.size}\n")
+
+        sendFileMetadataBinary(batch)
 
 
 
 
     }
+
+
+    private suspend fun sendFileMetadataBinary(entries: List<FSPFileEntry>) {
+        for (entry in entries) {
+            // 1️⃣ Filename length (uint16_t, big endian)
+            val nameBytes = entry.name.toByteArray(Charsets.UTF_8)
+            if (nameBytes.size > 0xFFFF) throw IllegalArgumentException("Filename too long: ${entry.name}")
+            val nameLenBuf = ByteBuffer.allocate(2)
+                .order(ByteOrder.BIG_ENDIAN)
+                .putShort(nameBytes.size.toShort())
+                .array()
+            sshSender!!.sendBinary(nameLenBuf, flush = false)
+
+            // 2️⃣ Filename bytes
+            sshSender!!.sendBinary(nameBytes, flush = false)
+
+            // 3️⃣ File size (uint64_t, big endian)
+            val sizeBuf = ByteBuffer.allocate(8)
+                .order(ByteOrder.BIG_ENDIAN)
+                .putLong(entry.size)
+                .array()
+            sshSender!!.sendBinary(sizeBuf, flush = false)
+
+            // 4️⃣ File hash (32 bytes placeholder or actual SHA256)
+            if (entry.fileHash.size != 32) throw IllegalArgumentException("File hash must be 32 bytes")
+            sshSender!!.sendBinary(entry.fileHash, flush = false)
+
+            // 5️⃣ Number of chunks (uint64_t, big endian)
+            val chunksBuf = ByteBuffer.allocate(8)
+                .order(ByteOrder.BIG_ENDIAN)
+                .putLong(entry.numChunks)
+                .array()
+            sshSender!!.sendBinary(chunksBuf, flush = false)
+
+            // 6️⃣ Chunk hashes if present
+            if (entry.numChunks > 0) {
+                val chunkHashesToSend = entry.chunkHashes as? ByteArray
+                    ?: throw IllegalStateException("chunkHashes is null but numChunks > 0")
+                sshSender!!.sendBinary(chunkHashesToSend, flush = false)
+            }
+
+            // 7️⃣ Flush after sending one file metadata
+            sshSender!!.flush()
+        }
+    }
+
 
     /**
      * Computes SHA-256 hash of a file using the walkerState's file buffer.
