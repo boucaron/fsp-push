@@ -57,6 +57,7 @@ class DirectoryScanner(
             sshSender!!.sendText(FSPSendVersion.sendCommand())
             // TODO: Handle various modes
             sshSender!!.sendText(FSPSendMode.sendCommandStatic(FSPSendMode.FSP_APPEND))
+            sshSender!!.sendText("kaboum")
 
 
         }
@@ -176,7 +177,7 @@ class DirectoryScanner(
             if ( !dryRun ) {
 
 
-
+                sshSender?.sendText("END\n")
                 sshSender?.flush()
                 sshSender?.disconnect()
                 sshSender = null

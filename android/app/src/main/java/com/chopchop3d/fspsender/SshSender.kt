@@ -1,13 +1,12 @@
 package com.chopchop3d.fspsender
 
 import android.util.Log
-import com.jcraft.jsch.ChannelExec
 import com.jcraft.jsch.ChannelShell
 import com.jcraft.jsch.JSch
 import com.jcraft.jsch.Session
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
 import java.io.BufferedOutputStream
+import java.io.InputStream
 import java.io.OutputStream
 import java.util.Properties
 
@@ -16,20 +15,18 @@ class SshSender {
     companion object {
         const val TIMEOUT = 60 * 1000 // 60 s
         const val SSH_DEFAULT_PORT = 22
-
         const val CHANNEL_SHELL = "shell"
         const val LOG_TAG = "SshSender"
-
         const val OUTPUT_BUFFER_SIZE = 16 * 1024 * 1024 // 16 MB
     }
 
     private var session: Session? = null
     private var channel: ChannelShell? = null
     private var outputStream: OutputStream? = null
+    private var inputStream: InputStream? = null
+    private var errorJob: Job? = null
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    /**
-     * Create SSH configuration
-     */
     private fun createConfig(): Properties {
         val config = Properties()
         config["compression.s2c"] = "none"
@@ -39,7 +36,7 @@ class SshSender {
     }
 
     /**
-     * Connect and initialize persistent SSH channel
+     * Connect to SSH and open a persistent shell channel
      */
     suspend fun connect(
         host: String,
@@ -55,10 +52,26 @@ class SshSender {
             session!!.timeout = TIMEOUT
             session!!.connect()
 
+            // Open persistent shell channel
             channel = session!!.openChannel(CHANNEL_SHELL) as ChannelShell
             channel!!.connect()
 
             outputStream = BufferedOutputStream(channel!!.outputStream, OUTPUT_BUFFER_SIZE)
+            inputStream = channel!!.inputStream
+
+            // Launch coroutine to continuously read server output (stdout + stderr)
+            errorJob = scope.launch {
+                val buffer = ByteArray(4096)
+                try {
+                    while (true) {
+                        val read = inputStream!!.read(buffer)
+                        if (read > 0) {
+                            val line = String(buffer, 0, read)
+                            Log.e(LOG_TAG, "Server output: $line")
+                        } else if (read == -1) break
+                    }
+                } catch (_: Exception) {}
+            }
 
             Log.d(LOG_TAG, "SSH connected and shell channel initialized")
             true
@@ -69,26 +82,20 @@ class SshSender {
     }
 
     /**
-     * Start fsp-recv on the server with the given target directory.
-     * Keeps the channel open for sending commands/data.
+     * Start fsp-recv on the server with the target directory
+     * Sends the command via shell channel so sendText/sendBinary can write to stdin
      */
     suspend fun startFspRecv(targetDirectory: String): Boolean = withContext(Dispatchers.IO) {
-        if (session == null || !session!!.isConnected) {
-            Log.e(LOG_TAG, "SSH session is not connected")
+        if (channel == null || !channel!!.isConnected) {
+            Log.e(LOG_TAG, "SSH shell channel is not connected")
             return@withContext false
         }
 
-        try {
-            // Open exec channel to start fsp-recv
-            val execChannel = session!!.openChannel("exec") as ChannelExec
-            execChannel.setCommand("fsp-recv \"$targetDirectory\"")
-            execChannel.inputStream = null
-            // execChannel.errStream = System.err // or capture errors
-
-            execChannel.connect()
+        return@withContext try {
+            val command = "fsp-recv \"$targetDirectory\" 2>&1\n"
+            outputStream?.write(command.toByteArray(Charsets.UTF_8))
+            outputStream?.flush()
             Log.d(LOG_TAG, "fsp-recv started on server: $targetDirectory")
-
-            // Keep the shell channel open to send further commands or binary data
             true
         } catch (e: Exception) {
             Log.e(LOG_TAG, "Failed to start fsp-recv", e)
@@ -97,7 +104,7 @@ class SshSender {
     }
 
     /**
-     * Send textual data to the server (stdin)
+     * Send textual data to the server process
      */
     suspend fun sendText(text: String) = withContext(Dispatchers.IO) {
         try {
@@ -110,20 +117,19 @@ class SshSender {
     }
 
     /**
-     * Send binary data to the server
+     * Send binary data to the server process
      */
-    suspend fun sendBinary(data: ByteArray, flush: Boolean = false) =
-        withContext(Dispatchers.IO) {
-            try {
-                outputStream?.write(data)
-                if (flush) outputStream?.flush()
-            } catch (e: Exception) {
-                Log.e(LOG_TAG, "Failed to send binary", e)
-            }
+    suspend fun sendBinary(data: ByteArray, flush: Boolean = false) = withContext(Dispatchers.IO) {
+        try {
+            outputStream?.write(data)
+            if (flush) outputStream?.flush()
+        } catch (e: Exception) {
+            Log.e(LOG_TAG, "Failed to send binary", e)
         }
+    }
 
     /**
-     * Explicit flush when sending many chunks
+     * Flush output stream explicitly
      */
     suspend fun flush() = withContext(Dispatchers.IO) {
         try {
@@ -134,16 +140,19 @@ class SshSender {
     }
 
     /**
-     * Disconnect everything
+     * Disconnect SSH and cancel reading job
      */
     suspend fun disconnect() = withContext(Dispatchers.IO) {
         try { outputStream?.flush() } catch (_: Exception) {}
         try { outputStream?.close() } catch (_: Exception) {}
         try { channel?.disconnect() } catch (_: Exception) {}
         try { session?.disconnect() } catch (_: Exception) {}
+        errorJob?.cancelAndJoin()
         outputStream = null
+        inputStream = null
         channel = null
         session = null
+        errorJob = null
         Log.d(LOG_TAG, "SSH disconnected")
     }
 }
