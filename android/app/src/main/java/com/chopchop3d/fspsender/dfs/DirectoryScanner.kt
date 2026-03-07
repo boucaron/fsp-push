@@ -53,7 +53,8 @@ class DirectoryScanner(
                 throw RuntimeException("SSH connection failed")
             }
 
-            sshSender!!.startFspRecv("tests")
+            // sshSender!!.startProcess("tee -a tests/output_cat")
+            sshSender!!.startProcess("fsp-recv tests")
             sshSender!!.sendText(FSPSendVersion.sendCommand())
             // TODO: Handle various modes
             sshSender!!.sendText(FSPSendMode.sendCommandStatic(FSPSendMode.FSP_APPEND))
@@ -178,7 +179,6 @@ class DirectoryScanner(
 
 
                 sshSender?.sendText("END\n")
-                sshSender?.flush()
                 sshSender?.disconnect()
                 sshSender = null
             }
