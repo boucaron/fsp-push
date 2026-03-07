@@ -16,6 +16,7 @@ import com.chopchop3d.fspsender.protocol.FSPSendVersion
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.yield
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.security.MessageDigest
@@ -215,6 +216,7 @@ class DirectoryScanner(
         // Send Directory CMD
         // Create File Batch
         //   For each File Batch
+        //   Send File Count
         //   Send Metadata File - NO SHA
         //   Send File Data & Compute SHA
         //   Send Metadata File - SHA
@@ -276,21 +278,26 @@ class DirectoryScanner(
     private suspend fun processFileBatch(
         walkerState: FSPWalkerState,
         batch: List<FSPFileEntry>
-    ) {
+    ) = withContext(Dispatchers.IO) {
 
+        //  Send Metadata File - NO SHA
+        //  Send File Data & Compute SHA
+        //  Send Metadata File - SHA
 
         sshSender!!.sendText(FSPSendFileList.sendCommand())
         sshSender!!.sendText("FILES: ${batch.size}\n")
 
         sendFileMetadataBinary(batch)
-
+        sendFileData(batch, walkerState)
 
 
 
     }
 
 
-    private suspend fun sendFileMetadataBinary(entries: List<FSPFileEntry>) {
+
+
+    private suspend fun sendFileMetadataBinary(entries: List<FSPFileEntry>)  {
         for (entry in entries) {
             // 1️⃣ Filename length (uint16_t, big endian)
             val nameBytes = entry.name.toByteArray(Charsets.UTF_8)
@@ -332,6 +339,44 @@ class DirectoryScanner(
             // 7️⃣ Flush after sending one file metadata
             sshSender!!.flush()
         }
+    }
+
+    private suspend fun sendFileData(entries: List<FSPFileEntry>,
+                                     walkerState: FSPWalkerState)  {
+        for (entry in entries) {
+            if ( entry.size > FSPProtocol.FSP_CHUNK_SIZE ) {
+                sendFileDataChunk(entry)
+            }  else {
+                sendFileDataSmall(entry, walkerState)
+            }
+        }
+    }
+
+    private suspend fun sendFileDataSmall(entry: FSPFileEntry, walkerState: FSPWalkerState) {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val fileUri = DocumentsContract.buildDocumentUriUsingTree(entry.treeUri, entry.childDocId)
+        val stream = context.contentResolver.openInputStream(fileUri)
+            ?: throw Exception("Cannot open $fileUri")
+
+        stream.use { input ->
+            var read: Int
+            while (input.read(walkerState.fileBuf).also { read = it } != -1) {
+                // Update SHA256
+                digest.update(walkerState.fileBuf, 0, read)
+                // Send data chunk over SSH
+                sshSender!!.sendBinary(walkerState.fileBuf.copyOfRange(0, read), flush = false)
+            }
+        }
+
+        // Compute final SHA256 hash and store it in binary form
+        entry.fileHash = digest.digest()
+
+        sshSender!!.flush()
+        yield()
+    }
+
+    private suspend fun sendFileDataChunk(entry: FSPFileEntry) {
+        // TODO
     }
 
 
