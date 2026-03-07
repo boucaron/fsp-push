@@ -28,6 +28,8 @@ class SshHelper {
         config["compression.s2c"] = "none"
         config["compression.c2s"] = "none"
 
+        config["StrictHostKeyChecking"] = "no"
+
         return config
     }
 

@@ -4,6 +4,10 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import android.util.Log
 import androidx.activity.ComponentActivity
+import com.chopchop3d.fspsender.SshConfig
+import com.chopchop3d.fspsender.SshSender
+import com.chopchop3d.fspsender.protocol.FSPSendMode
+import com.chopchop3d.fspsender.protocol.FSPSendVersion
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.security.MessageDigest
@@ -13,10 +17,13 @@ import java.security.MessageDigest
  */
 class DirectoryScanner(
     private val context: ComponentActivity,
-    private val walkerState: FSPWalkerState
+    private val walkerState: FSPWalkerState,
+    private val sshConfig: SshConfig?
 ) {
 
     private val visitedDirs = mutableSetOf<String>()
+
+    private var sshSender: SshSender? = null
 
     /**
      * Starts a DFS scan on the given tree URI.
@@ -30,6 +37,29 @@ class DirectoryScanner(
         dryRun: Boolean,
         onProgress: ((walkerState: FSPWalkerState) -> Unit)? = null
     ): FSPWalkerState = withContext(Dispatchers.IO) {
+
+        if (!dryRun && sshConfig != null) {
+            sshSender = SshSender()
+
+            val connected = sshSender!!.connect(
+                host = sshConfig.host,
+                username = sshConfig.username,
+                password = sshConfig.password,
+                port = sshConfig.port
+            )
+
+
+            if (!connected) {
+                throw RuntimeException("SSH connection failed")
+            }
+
+            sshSender!!.startFspRecv("tests")
+            sshSender!!.sendText(FSPSendVersion.sendCommand())
+            // TODO: Handle various modes
+            sshSender!!.sendText(FSPSendMode.sendCommandStatic(FSPSendMode.FSP_APPEND))
+
+
+        }
 
         var tenMB = 10*1024*1024
 
@@ -142,6 +172,15 @@ class DirectoryScanner(
         if ( walkerState.currentDepth == 0 ) {
             walkerState.triggerDisplay ++;
             walkerState.dryRun.computeSimulationThroughput(walkerState.totalBytes.toDouble())
+
+            if ( !dryRun ) {
+
+
+
+                sshSender?.flush()
+                sshSender?.disconnect()
+                sshSender = null
+            }
         }
 
         walkerState

@@ -43,7 +43,6 @@ import java.time.Instant
 
 class MainActivity : ComponentActivity() {
 
-    // Activity-level source-of-truth walker state
     private var walkerState by mutableStateOf(
         FSPWalkerState().apply {
             fullPath = ""
@@ -96,8 +95,8 @@ class MainActivity : ComponentActivity() {
                         selectedUri = selectedUri,
                         walkerState = walkerState,
                         onWalkerStateChange = { updated -> walkerState = updated },
-                        onScanDirectory = { uri, dryRun, onProgress ->
-                            val scanner = DirectoryScanner(this, walkerState)
+                        onScanDirectory = { uri, dryRun, sshConfig, onProgress ->
+                            val scanner = DirectoryScanner(this, walkerState, sshConfig)
                             scanner.scan(uri, dryRun, onProgress)
                         },
                         context = this
@@ -115,17 +114,15 @@ fun MainScreen(
     selectedUri: Uri?,
     walkerState: FSPWalkerState,
     onWalkerStateChange: (FSPWalkerState) -> Unit,
-    onScanDirectory: suspend (Uri, Boolean, (walkerState: FSPWalkerState) -> Unit) -> Unit,
+    onScanDirectory: suspend (Uri, Boolean, SshConfig?, (walkerState: FSPWalkerState) -> Unit) -> Unit,
     context: ComponentActivity
 ) {
     val scope = rememberCoroutineScope()
     var statusMessage by remember { mutableStateOf("Idle") }
     var dry_run by remember { mutableStateOf(true) }
 
-    // Compose-local copy of walker state for UI
     var walkerStateLocal by remember { mutableStateOf(walkerState) }
 
-    // Derived UI values
     var triggerDisplay = walkerStateLocal.triggerDisplay
     var displayTotalFiles by remember { mutableStateOf(0L) }
     var displayTotalSize by remember { mutableStateOf("") }
@@ -133,7 +130,6 @@ fun MainScreen(
     var displaySimulatedTime by remember { mutableStateOf("") }
     var elapsedTime by remember { mutableStateOf(0L) }
 
-    // SSH fields
     var sshHost by remember { mutableStateOf("") }
     var sshUser by remember { mutableStateOf("") }
     var sshPassword by remember { mutableStateOf("") }
@@ -165,21 +161,18 @@ fun MainScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-
+                // Dry-run button
                 ZenburnButton(
                     onClick = {
-                        Log.e("FSPSender", "Dry-run, starting coroutine")
                         scope.launch {
                             statusMessage = "Starting dry-run..."
                             elapsedTime = 0L
                             dry_run = true
+                            walkerStateLocal.totalBytes = 0
+                            walkerStateLocal.totalFiles = 0
                             val startTime = System.currentTimeMillis()
 
-                            // Reset
-                            walkerStateLocal.totalBytes = 0;
-                            walkerStateLocal.totalFiles = 0;
-
-                            onScanDirectory(selectedUri, dry_run) { updatedState ->
+                            onScanDirectory(selectedUri, dry_run, null) { updatedState ->
                                 walkerStateLocal = updatedState
                                 onWalkerStateChange(updatedState)
                                 elapsedTime = System.currentTimeMillis() - startTime
@@ -188,20 +181,25 @@ fun MainScreen(
                             statusMessage = "Dry-run completed"
                         }
                     }
-                ) {
-                    Text("Dry-run")
-                }
+                ) { Text("Dry-run") }
 
+                // Run button
                 ZenburnButton(
                     onClick = {
-                        Log.e("FSPSender", "Run, starting coroutine")
                         scope.launch {
                             statusMessage = "Starting transfer..."
                             elapsedTime = 0L
                             dry_run = false
+
+                            val sshConfig = SshConfig(
+                                host = sshHost,
+                                username = sshUser,
+                                password = sshPassword,
+                                port = 22
+                            )
                             val startTime = System.currentTimeMillis()
 
-                            onScanDirectory(selectedUri, dry_run) { updatedState ->
+                            onScanDirectory(selectedUri, dry_run, sshConfig) { updatedState ->
                                 walkerStateLocal = updatedState
                                 onWalkerStateChange(updatedState)
                                 elapsedTime = System.currentTimeMillis() - startTime
@@ -210,12 +208,9 @@ fun MainScreen(
                             statusMessage = "Transfer completed"
                         }
                     }
-                ) {
-                    Text("Run")
-                }
+                ) { Text("Run") }
             }
         }
-
 
         Spacer(modifier = Modifier.height(8.dp))
         OutlinedTextField(
@@ -231,28 +226,19 @@ fun MainScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // SSH input fields
         Accordion(title = "SSH Settings") {
             OutlinedTextField(
                 value = sshHost,
                 onValueChange = { sshHost = it },
                 label = { Text("SSH Host") },
-                modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Next),
-                keyboardActions = KeyboardActions(
-                    onNext = { focusManager.moveFocus(FocusDirection.Down) }
-                )
+                modifier = Modifier.fillMaxWidth()
             )
             Spacer(modifier = Modifier.height(8.dp))
             OutlinedTextField(
                 value = sshUser,
                 onValueChange = { sshUser = it },
                 label = { Text("SSH Username") },
-                modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Next),
-                keyboardActions = KeyboardActions(
-                    onNext = { focusManager.moveFocus(FocusDirection.Down) }
-                )
+                modifier = Modifier.fillMaxWidth()
             )
             Spacer(modifier = Modifier.height(8.dp))
             OutlinedTextField(
@@ -267,17 +253,9 @@ fun MainScreen(
                         contentDescription = "Toggle password visibility",
                         modifier = Modifier.clickable { passwordVisible = !passwordVisible }
                     )
-                },
-                keyboardOptions = KeyboardOptions.Default.copy(
-                    keyboardType = KeyboardType.Password,
-                    imeAction = ImeAction.Done
-                ),
-                keyboardActions = KeyboardActions(
-                    onDone = { keyboardController?.hide() }
-                )
+                }
             )
             Spacer(modifier = Modifier.height(8.dp))
-
             ZenburnButton(onClick = {
                 scope.launch {
                     sshStatus = "Connecting..."
@@ -285,9 +263,7 @@ fun MainScreen(
                     sshStatus = if (success) "SSH status: Connected!" else "SSH status: Failed"
                 }
             }) { Text("Test SSH Connection") }
-
             Spacer(modifier = Modifier.height(8.dp))
-
             ZenburnButton(onClick = {
                 scope.launch {
                     sshStatus = "Connecting..."
@@ -295,9 +271,7 @@ fun MainScreen(
                     sshStatus = if (success) "SSH: target directory exists" else "SSH: target directory does not exist"
                 }
             }) { Text("Test target directory") }
-
             Spacer(modifier = Modifier.height(8.dp))
-
             ZenburnButton(onClick = {
                 scope.launch {
                     sshStatus = "Connecting..."
@@ -305,25 +279,20 @@ fun MainScreen(
                     sshStatus = if (success) "SSH: fsp-recv exists on target host" else "SSH: fsp-recv does not exist or not in path"
                 }
             }) { Text("Test fsp-recv Connection") }
-
             Spacer(modifier = Modifier.height(8.dp))
             Text(sshStatus)
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        Accordion(title = "Mics Settings") {
-            var throughputText by remember {
-                mutableStateOf(walkerState.dryRun.simulationThroughput.toString())
-            }
+        Accordion(title = "Misc Settings") {
+            var throughputText by remember { mutableStateOf(walkerState.dryRun.simulationThroughput.toString()) }
 
             OutlinedTextField(
                 value = throughputText,
                 onValueChange = { input ->
                     throughputText = input
-                    input.toDoubleOrNull()?.let {
-                        walkerState.dryRun.simulationThroughput = it
-                    }
+                    input.toDoubleOrNull()?.let { walkerState.dryRun.simulationThroughput = it }
                 },
                 label = { Text("Simulation Throughput (MB/s)") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
@@ -333,7 +302,6 @@ fun MainScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Status UI
         Text("Status: $statusMessage")
         Spacer(modifier = Modifier.height(8.dp))
 
@@ -378,9 +346,7 @@ fun Accordion(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth()
-        ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
             Text(
                 text = title + if (expanded) " ▲" else " ▼",
                 modifier = Modifier

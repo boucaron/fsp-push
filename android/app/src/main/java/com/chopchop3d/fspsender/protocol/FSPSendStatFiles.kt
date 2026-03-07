@@ -1,6 +1,7 @@
 package com.chopchop3d.fspsender.protocol
 
 import android.util.Log
+import java.util.Properties
 
 class FSPSendStatFiles : FSPSendTextualCommand {
 
@@ -19,5 +20,15 @@ class FSPSendStatFiles : FSPSendTextualCommand {
 
         // Return the command string
         return command
+    }
+
+    fun createConfig(): Properties {
+        val config = Properties()
+
+        // Disable compression
+        config["compression.s2c"] = "none"
+        config["compression.c2s"] = "none"
+
+        return config
     }
 }

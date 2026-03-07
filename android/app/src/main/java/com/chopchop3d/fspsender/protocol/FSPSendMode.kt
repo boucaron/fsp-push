@@ -11,9 +11,19 @@ class FSPSendMode : FSPSendTextualCommand {
 
         private val VALID_MODES = setOf(FSP_APPEND, FSP_FORCE, FSP_SAFE)
         private const val TAG = "FSPSendMode"
+
+        /**
+         * Static method to quickly get a MODE command without instantiating FSPSendMode.
+         */
+        fun sendCommandStatic(mode: String = FSP_APPEND): String {
+            val validMode = if (VALID_MODES.contains(mode)) mode else FSP_APPEND
+            val command = "MODE: $validMode\n"
+            Log.d(TAG, "Sending static command: $command")
+            return command
+        }
     }
 
-    // Backing field for mode
+    // Backing field for instance mode
     private var _mode: String = FSP_APPEND
 
     var mode: String
@@ -28,7 +38,6 @@ class FSPSendMode : FSPSendTextualCommand {
 
     override fun sendCommand(): String {
         val command = "MODE: $_mode\n"
-        // Simulate sending the command
         Log.d(TAG, "Sending command: $command")
         return command
     }
