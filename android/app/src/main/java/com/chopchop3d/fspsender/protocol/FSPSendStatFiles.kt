@@ -1,34 +1,18 @@
 package com.chopchop3d.fspsender.protocol
 
 import android.util.Log
-import java.util.Properties
 
-class FSPSendStatFiles : FSPSendTextualCommand {
+class FSPSendStatFiles {
 
     companion object {
         private const val TAG = "FSPSendStatFiles"
-    }
 
-    // Member to hold the number of files
-    var fileCount: Long = 0
+        fun sendCommand(fileCount: Long): String {
+            val command = "STAT_FILES: $fileCount\n"
 
-    override fun sendCommand(): String {
-        val command = "STAT_FILES: $fileCount\n"
+            Log.d(TAG, "Sending command: $command")
 
-        // Log the command being sent
-        Log.d(TAG, "Sending command: $command")
-
-        // Return the command string
-        return command
-    }
-
-    fun createConfig(): Properties {
-        val config = Properties()
-
-        // Disable compression
-        config["compression.s2c"] = "none"
-        config["compression.c2s"] = "none"
-
-        return config
+            return command
+        }
     }
 }

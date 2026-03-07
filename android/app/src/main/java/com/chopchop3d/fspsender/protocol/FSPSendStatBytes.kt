@@ -2,22 +2,17 @@ package com.chopchop3d.fspsender.protocol
 
 import android.util.Log
 
-class FSPSendStatBytes : FSPSendTextualCommand {
+class FSPSendStatBytes {
 
     companion object {
         private const val TAG = "FSPSendStatBytes"
-    }
 
-    // Member to hold the file size
-    var fileTotalSize: Long = 0
+        fun sendCommand(fileTotalSize: Long): String {
+            val command = "STAT_BYTES: $fileTotalSize\n"
 
-    override fun sendCommand(): String {
-        val command = "STAT_BYTES: $fileTotalSize\n"
+            Log.d(TAG, "Sending command: $command")
 
-        // Log the command being sent
-        Log.d(TAG, "Sending command: $command")
-
-        // Return the command string
-        return command
+            return command
+        }
     }
 }

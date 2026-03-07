@@ -2,22 +2,17 @@ package com.chopchop3d.fspsender.protocol
 
 import android.util.Log
 
-public class FSPSendDirectory  : FSPSendTextualCommand {
+class FSPSendDirectory {
 
     companion object {
         private const val TAG = "FSPSendDirectory"
-    }
 
+        fun sendCommand(directory: String): String {
+            val command = "DIRECTORY: $directory\n"
 
-    var directory: String = "" // Relative Path !
+            Log.d(TAG, "Sending command: $command")
 
-    override fun sendCommand(): String {
-        val command = "DIRECTORY: $directory\n"
-
-        // Log the command being sent
-        Log.d(TAG, "Sending command: $command")
-
-        // Return the command string
-        return command
+            return command
+        }
     }
 }

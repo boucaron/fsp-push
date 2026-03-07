@@ -7,6 +7,8 @@ import androidx.activity.ComponentActivity
 import com.chopchop3d.fspsender.SshConfig
 import com.chopchop3d.fspsender.SshSender
 import com.chopchop3d.fspsender.protocol.FSPSendMode
+import com.chopchop3d.fspsender.protocol.FSPSendStatBytes
+import com.chopchop3d.fspsender.protocol.FSPSendStatFiles
 import com.chopchop3d.fspsender.protocol.FSPSendVersion
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -53,12 +55,13 @@ class DirectoryScanner(
                 throw RuntimeException("SSH connection failed")
             }
 
-            // sshSender!!.startProcess("tee -a tests/output_cat")
             sshSender!!.startProcess("fsp-recv tests")
             sshSender!!.sendText(FSPSendVersion.sendCommand())
             // TODO: Handle various modes
             sshSender!!.sendText(FSPSendMode.sendCommandStatic(FSPSendMode.FSP_APPEND))
-            sshSender!!.sendText("kaboum")
+            sshSender!!.sendText(FSPSendStatBytes.sendCommand(walkerState.totalBytes))
+            sshSender!!.sendText(FSPSendStatFiles.sendCommand(walkerState.totalFiles))
+
 
 
         }
@@ -66,6 +69,14 @@ class DirectoryScanner(
         var tenMB = 10*1024*1024
 
         suspend fun dfs(docId: String, name: String) {
+
+
+            var rname = name;
+            if ( rname.isEmpty()) {
+                rname = "."
+            }
+            Log.e("dfs", "start : docId $docId rname $rname ");
+
             if (!visitedDirs.add(docId)) return
 
             // Respect max depth if configured
@@ -78,8 +89,8 @@ class DirectoryScanner(
             val previousFull = walkerState.fullPath
 
             // Update paths
-            walkerState.relPath = if (previousRel.isEmpty()) name else "$previousRel/$name"
-            walkerState.fullPath = if (previousFull.isEmpty()) name else "$previousFull/$name"
+            walkerState.relPath = if (previousRel.isEmpty()) rname else "$previousRel/$rname"
+            walkerState.fullPath = if (previousFull.isEmpty()) rname else "$previousFull/$rname"
 
             // Reset current entries for this folder
             walkerState.entries = mutableListOf()

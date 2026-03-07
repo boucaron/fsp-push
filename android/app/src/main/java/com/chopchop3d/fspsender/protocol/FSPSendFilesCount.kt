@@ -1,23 +1,18 @@
-package com.chopchop3d.fspsender.protocol;
+package com.chopchop3d.fspsender.protocol
 
 import android.util.Log
 
-public class FSPSendFilesCount : FSPSendTextualCommand {
+class FSPSendFilesCount {
 
     companion object {
         private const val TAG = "FSPSendFilesCount"
-    }
 
-    var files: Long = 0L
+        fun sendCommand(files: Long): String {
+            val command = "FILES: $files\n"
 
-    override fun sendCommand(): String {
-        val command = "FILES: files\n"
+            Log.d(TAG, "Sending command: $command")
 
-        // Log the command being sent
-        Log.d(TAG, "Sending command: $command")
-
-        // Return the command string
-        return command
+            return command
+        }
     }
 }
-

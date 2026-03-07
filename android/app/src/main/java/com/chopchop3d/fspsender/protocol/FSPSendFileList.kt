@@ -2,20 +2,17 @@ package com.chopchop3d.fspsender.protocol
 
 import android.util.Log
 
-public class FSPSendFileList  : FSPSendTextualCommand {
+class FSPSendFileList {
 
     companion object {
         private const val TAG = "FSPSendFileList"
-    }
 
+        fun sendCommand(): String {
+            val command = "FILE_LIST\n"
 
-    override fun sendCommand(): String {
-        val command = "FILE_LIST\n"
+            Log.d(TAG, "Sending command: $command")
 
-        // Log the command being sent
-        Log.d(TAG, "Sending command: $command")
-
-        // Return the command string
-        return command
+            return command
+        }
     }
 }
