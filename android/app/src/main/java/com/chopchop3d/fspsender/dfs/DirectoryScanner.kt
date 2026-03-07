@@ -6,11 +6,13 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import com.chopchop3d.fspsender.SshConfig
 import com.chopchop3d.fspsender.SshSender
+import com.chopchop3d.fspsender.protocol.FSPSendDirectory
 import com.chopchop3d.fspsender.protocol.FSPSendMode
 import com.chopchop3d.fspsender.protocol.FSPSendStatBytes
 import com.chopchop3d.fspsender.protocol.FSPSendStatFiles
 import com.chopchop3d.fspsender.protocol.FSPSendVersion
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.security.MessageDigest
 
@@ -56,6 +58,7 @@ class DirectoryScanner(
             }
 
             sshSender!!.startProcess("fsp-recv tests")
+            delay(100)
             sshSender!!.sendText(FSPSendVersion.sendCommand())
             // TODO: Handle various modes
             sshSender!!.sendText(FSPSendMode.sendCommandStatic(FSPSendMode.FSP_APPEND))
@@ -167,7 +170,9 @@ class DirectoryScanner(
                 onProgress?.invoke(walkerState)
             }
 
-            processDirectory(walkerState);
+            if (!dryRun) {
+                processDirectory(walkerState);
+            }
 
 
             // Recurse into directories
@@ -201,12 +206,16 @@ class DirectoryScanner(
     }
 
 
-    private fun processDirectory(walkerState: FSPWalkerState) {
+    private suspend fun processDirectory(walkerState: FSPWalkerState) {
+
         // Send Directory CMD
         // For each File Batch
         // Send Metadata File - NO SHA
         // Send File Data & Compute SHA
         // Send Metadata File - SHA
+
+        sshSender!!.sendText(FSPSendDirectory.sendCommand(walkerState.relPath))
+
 
 
 

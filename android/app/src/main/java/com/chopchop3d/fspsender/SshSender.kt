@@ -75,14 +75,14 @@ class SshSender {
                             Log.e(LOG_TAG, "Server stderr: ${String(buffer, 0, read)}")
                         }
                     }
-                    Log.d(LOG_TAG, "Remote process exited with status: ${execChannel!!.exitStatus}")
+                    Log.e(LOG_TAG, "Remote process exited with status: ${execChannel!!.exitStatus}")
                 } catch (e: Exception) {
                     Log.e(LOG_TAG, "Error reading stderr", e)
                 }
             }
 
             execChannel!!.connect()
-            Log.d(LOG_TAG, "Remote process started: $command")
+            Log.e(LOG_TAG, "Remote process started: $command")
             true
         } catch (e: Exception) {
             Log.e(LOG_TAG, "Failed to start remote process", e)
@@ -93,7 +93,7 @@ class SshSender {
     /** Send text to the remote process stdin */
     suspend fun sendText(text: String) = withContext(Dispatchers.IO) {
         try {
-            stdin?.write((text + "\n").toByteArray(Charsets.UTF_8))
+            stdin?.write((text).toByteArray(Charsets.UTF_8))
             stdin?.flush()
         } catch (e: Exception) {
             Log.e(LOG_TAG, "Failed to send text", e)
