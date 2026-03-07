@@ -1,11 +1,10 @@
 package com.chopchop3d.fspsender
 
 import android.util.Log
-import com.jcraft.jsch.ChannelShell
+import com.jcraft.jsch.ChannelExec
 import com.jcraft.jsch.JSch
 import com.jcraft.jsch.Session
 import kotlinx.coroutines.*
-import java.io.BufferedOutputStream
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.Properties
@@ -13,146 +12,121 @@ import java.util.Properties
 class SshSender {
 
     companion object {
-        const val TIMEOUT = 60 * 1000 // 60 s
+        const val TIMEOUT = 60 * 1000
         const val SSH_DEFAULT_PORT = 22
-        const val CHANNEL_SHELL = "shell"
         const val LOG_TAG = "SshSender"
-        const val OUTPUT_BUFFER_SIZE = 16 * 1024 * 1024 // 16 MB
     }
 
     private var session: Session? = null
-    private var channel: ChannelShell? = null
-    private var outputStream: OutputStream? = null
-    private var inputStream: InputStream? = null
-    private var errorJob: Job? = null
+    private var execChannel: ChannelExec? = null
+    private var stdin: OutputStream? = null
+
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     private fun createConfig(): Properties {
-        val config = Properties()
-        config["compression.s2c"] = "none"
-        config["compression.c2s"] = "none"
-        config["StrictHostKeyChecking"] = "no"
-        return config
-    }
-
-    /**
-     * Connect to SSH and open a persistent shell channel
-     */
-    suspend fun connect(
-        host: String,
-        username: String,
-        password: String,
-        port: Int = SSH_DEFAULT_PORT
-    ): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val jsch = JSch()
-            session = jsch.getSession(username, host, port)
-            session!!.setPassword(password)
-            session!!.setConfig(createConfig())
-            session!!.timeout = TIMEOUT
-            session!!.connect()
-
-            // Open persistent shell channel
-            channel = session!!.openChannel(CHANNEL_SHELL) as ChannelShell
-            channel!!.connect()
-
-            outputStream = BufferedOutputStream(channel!!.outputStream, OUTPUT_BUFFER_SIZE)
-            inputStream = channel!!.inputStream
-
-            // Launch coroutine to continuously read server output (stdout + stderr)
-            errorJob = scope.launch {
-                val buffer = ByteArray(4096)
-                try {
-                    while (true) {
-                        val read = inputStream!!.read(buffer)
-                        if (read > 0) {
-                            val line = String(buffer, 0, read)
-                            Log.e(LOG_TAG, "Server output: $line")
-                        } else if (read == -1) break
-                    }
-                } catch (_: Exception) {}
-            }
-
-            Log.d(LOG_TAG, "SSH connected and shell channel initialized")
-            true
-        } catch (e: Exception) {
-            Log.e(LOG_TAG, "SSH connect failed", e)
-            false
+        return Properties().apply {
+            this["compression.s2c"] = "none"
+            this["compression.c2s"] = "none"
+            this["StrictHostKeyChecking"] = "no"
         }
     }
 
-    /**
-     * Start fsp-recv on the server with the target directory
-     * Sends the command via shell channel so sendText/sendBinary can write to stdin
-     */
-    suspend fun startFspRecv(targetDirectory: String): Boolean = withContext(Dispatchers.IO) {
-        if (channel == null || !channel!!.isConnected) {
-            Log.e(LOG_TAG, "SSH shell channel is not connected")
+    /** Connect to SSH server */
+    suspend fun connect(host: String, username: String, password: String, port: Int = SSH_DEFAULT_PORT): Boolean =
+        withContext(Dispatchers.IO) {
+            try {
+                val jsch = JSch()
+                session = jsch.getSession(username, host, port).apply {
+                    setPassword(password)
+                    setConfig(createConfig())
+                    timeout = TIMEOUT
+                    connect()
+                }
+                Log.d(LOG_TAG, "SSH connected")
+                true
+            } catch (e: Exception) {
+                Log.e(LOG_TAG, "SSH connect failed", e)
+                false
+            }
+        }
+
+    /** Start a remote process (like tee or fsp-recv) and keep stdin open */
+    suspend fun startProcess(command: String): Boolean = withContext(Dispatchers.IO) {
+        if (session == null || !session!!.isConnected) {
+            Log.e(LOG_TAG, "SSH session not connected")
             return@withContext false
         }
 
-        return@withContext try {
-            val command = "fsp-recv \"$targetDirectory\" 2>&1\n"
-            outputStream?.write(command.toByteArray(Charsets.UTF_8))
-            outputStream?.flush()
-            Log.d(LOG_TAG, "fsp-recv started on server: $targetDirectory")
+        try {
+            execChannel = session!!.openChannel("exec") as ChannelExec
+            execChannel!!.setCommand(command)
+            execChannel!!.inputStream = null // stdin will be via execChannel.outputStream
+            stdin = execChannel!!.outputStream
+            val stderr: InputStream = execChannel!!.errStream
+
+            // Launch coroutine to read stderr continuously
+            scope.launch {
+                val buffer = ByteArray(4096)
+                try {
+                    while (true) {
+                        val read = stderr.read(buffer)
+                        if (read == -1) break
+                        if (read > 0) {
+                            Log.e(LOG_TAG, "Server stderr: ${String(buffer, 0, read)}")
+                        }
+                    }
+                    Log.d(LOG_TAG, "Remote process exited with status: ${execChannel!!.exitStatus}")
+                } catch (e: Exception) {
+                    Log.e(LOG_TAG, "Error reading stderr", e)
+                }
+            }
+
+            execChannel!!.connect()
+            Log.d(LOG_TAG, "Remote process started: $command")
             true
         } catch (e: Exception) {
-            Log.e(LOG_TAG, "Failed to start fsp-recv", e)
+            Log.e(LOG_TAG, "Failed to start remote process", e)
             false
         }
     }
 
-    /**
-     * Send textual data to the server process
-     */
+    /** Send text to the remote process stdin */
     suspend fun sendText(text: String) = withContext(Dispatchers.IO) {
         try {
-            val bytes = (text + "\n").toByteArray(Charsets.UTF_8)
-            outputStream?.write(bytes)
-            outputStream?.flush()
+            stdin?.write((text + "\n").toByteArray(Charsets.UTF_8))
+            stdin?.flush()
         } catch (e: Exception) {
             Log.e(LOG_TAG, "Failed to send text", e)
         }
     }
 
-    /**
-     * Send binary data to the server process
-     */
+    /** Send binary to the remote process stdin */
     suspend fun sendBinary(data: ByteArray, flush: Boolean = false) = withContext(Dispatchers.IO) {
         try {
-            outputStream?.write(data)
-            if (flush) outputStream?.flush()
+            stdin?.write(data)
+            if (flush) stdin?.flush()
         } catch (e: Exception) {
             Log.e(LOG_TAG, "Failed to send binary", e)
         }
     }
 
-    /**
-     * Flush output stream explicitly
-     */
-    suspend fun flush() = withContext(Dispatchers.IO) {
+    /** Close stdin if remote process expects EOF */
+    suspend fun closeStdin() = withContext(Dispatchers.IO) {
         try {
-            outputStream?.flush()
-        } catch (e: Exception) {
-            Log.e(LOG_TAG, "Flush failed", e)
-        }
+            stdin?.close()
+        } catch (_: Exception) {}
     }
 
-    /**
-     * Disconnect SSH and cancel reading job
-     */
+    /** Disconnect everything */
     suspend fun disconnect() = withContext(Dispatchers.IO) {
-        try { outputStream?.flush() } catch (_: Exception) {}
-        try { outputStream?.close() } catch (_: Exception) {}
-        try { channel?.disconnect() } catch (_: Exception) {}
+        try { stdin?.flush() } catch (_: Exception) {}
+        try { stdin?.close() } catch (_: Exception) {}
+        try { execChannel?.disconnect() } catch (_: Exception) {}
         try { session?.disconnect() } catch (_: Exception) {}
-        errorJob?.cancelAndJoin()
-        outputStream = null
-        inputStream = null
-        channel = null
+        scope.cancel()
+        stdin = null
+        execChannel = null
         session = null
-        errorJob = null
         Log.d(LOG_TAG, "SSH disconnected")
     }
 }
