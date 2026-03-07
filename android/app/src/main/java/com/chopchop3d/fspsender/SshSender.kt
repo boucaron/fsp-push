@@ -167,6 +167,21 @@ class SshSender {
         }
     }
 
+    suspend fun flush() = withContext(Dispatchers.IO) {
+
+        val ch = execChannel
+        if (ch == null || ch.isClosed) {
+            Log.e(LOG_TAG, "Cannot send binary, process closed")
+            return@withContext
+        }
+
+        try {
+            stdin?.flush()
+        } catch (e: Exception) {
+            Log.e(LOG_TAG, "Failed to send binary", e)
+        }
+    }
+
     /** Close stdin (EOF) */
     suspend fun closeStdin() = withContext(Dispatchers.IO) {
         try {
