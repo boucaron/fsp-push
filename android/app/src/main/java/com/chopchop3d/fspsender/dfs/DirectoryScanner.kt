@@ -170,7 +170,7 @@ class DirectoryScanner(
                 onProgress?.invoke(walkerState)
             }
 
-            if (!dryRun) {
+            if (!dryRun && filesList.isNotEmpty()) {
                 processDirectory(walkerState);
             }
 
