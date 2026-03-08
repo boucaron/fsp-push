@@ -397,7 +397,11 @@ fun MainScreen(
                 }
             }"
         )
-        Text("Progress : ${walkerState.stderrServer}")
+
+
+        fun String.cleanAnsi() = this.replace("\u001B\\[[;?0-9]*[a-zA-Z]".toRegex(), "")
+        Text("Progress: ${walkerState.stderrServer.cleanAnsi()}")
+
     }
 }
 
