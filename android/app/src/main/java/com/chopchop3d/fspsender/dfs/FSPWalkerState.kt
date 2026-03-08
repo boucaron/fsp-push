@@ -1,5 +1,8 @@
 package com.chopchop3d.fspsender.dfs
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import com.chopchop3d.fspsender.protocol.FSPProtocol
 import java.time.Instant
 
@@ -55,9 +58,11 @@ data class FSPWalkerState(
     var lastThroughput: Double = 0.0,
     var triggerDisplay: Long = 0L,
 
-    // Used to display progress
-    var stderrServer: String = ""
+
 ) {
+    // Used to display progress
+    var stderrServer: String by mutableStateOf("")
+
     companion object {
         const val FSP_MAX_WALK_DEPTH = 1024          // Example default from protocol
         const val FSP_MAX_FILES_PER_LIST = FSPProtocol.FSP_MAX_FILES_PER_LIST

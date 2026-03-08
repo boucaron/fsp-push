@@ -58,7 +58,6 @@ class SshSender {
     }
 
     /** Start remote process (fsp-recv, tee, etc.) */
-    /** Start remote process (fsp-recv, tee, etc.) */
     suspend fun startProcess(
         command: String,
         stdErrCallback: ((String) -> Unit)? = null  // optional callback

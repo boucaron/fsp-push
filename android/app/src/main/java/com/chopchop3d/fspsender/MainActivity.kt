@@ -128,7 +128,6 @@ fun MainScreen(
     var displayTotalSize by remember { mutableStateOf("") }
     var displayTotalSizeLong by remember { mutableStateOf(0L) }
     var displaySimulatedTime by remember { mutableStateOf("") }
-    var displayProgress by remember { mutableStateOf(walkerState.stderrServer) }
     var elapsedTime by remember { mutableStateOf(0L) }
 
     var sshHost by remember { mutableStateOf("") }
@@ -380,7 +379,6 @@ fun MainScreen(
             displayTotalFiles = walkerState.totalFiles
             displayTotalSizeLong = walkerState.totalBytes
             displaySimulatedTime = FSPDryRunStats.Formatter.formatDuration(walkerState.dryRun.simulationEvaluation)
-            displayProgress = walkerState.stderrServer
         }
 
         Text("Files: $displayTotalFiles")
@@ -399,7 +397,7 @@ fun MainScreen(
                 }
             }"
         )
-        Text("Progress : ${displayProgress}")
+        Text("Progress : ${walkerState.stderrServer}")
     }
 }
 
