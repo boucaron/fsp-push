@@ -136,7 +136,8 @@ fun MainScreen(
     var sshStatus by remember { mutableStateOf("SSH status: Idle") }
     var passwordVisible by remember { mutableStateOf(false) }
     var targetDirectory by remember { mutableStateOf("") }
-    var throughputText by remember { mutableStateOf(walkerState.dryRun.simulationThroughput.toString()) }
+    // var throughputText by remember { mutableStateOf(walkerState.dryRun.simulationThroughput.toString()) }
+    var throughputText by remember { mutableStateOf("") }
 
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -180,6 +181,7 @@ fun MainScreen(
                             dry_run = true
                             walkerStateLocal.totalBytes = 0
                             walkerStateLocal.totalFiles = 0
+                            walkerStateLocal.dryRun.simulationThroughput = throughputText.toDouble();
                             val startTime = System.currentTimeMillis()
 
                             onScanDirectory(selectedUri, dry_run, null) { updatedState ->
@@ -359,10 +361,11 @@ fun MainScreen(
 
             OutlinedTextField(
                 value = throughputText,
-                onValueChange = { input ->
+              /*  onValueChange = { input ->
                     throughputText = input
                     input.toDoubleOrNull()?.let { walkerState.dryRun.simulationThroughput = it }
-                },
+                }, */
+                onValueChange = { throughputText = it },
                 label = { Text("Simulation Throughput (MB/s)") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
             )
