@@ -336,9 +336,19 @@ class DirectoryScanner(
 
             // 6️⃣ Chunk hashes if present
             if (entry.numChunks > 0) {
-                val chunkHashesToSend = entry.chunkHashes as? ByteArray
-                    ?: throw IllegalStateException("chunkHashes is null but numChunks > 0")
-                sshSender!!.sendBinary(chunkHashesToSend, flush = false)
+
+                val hashes = entry.chunkHashes
+                if (hashes.isEmpty()) {
+                    throw IllegalStateException("numChunks > 0 but chunkHashes empty")
+                }
+
+                for (h in hashes) {
+                    if (h.size != 32) {
+                        throw IllegalStateException("Invalid chunk hash length")
+                    }
+
+                    sshSender!!.sendBinary(h, flush = false)
+                }
             }
 
             // 7️⃣ Flush after sending one file metadata
@@ -350,7 +360,7 @@ class DirectoryScanner(
                                      walkerState: FSPWalkerState)  {
         for (entry in entries) {
             if ( entry.size > FSPProtocol.FSP_CHUNK_SIZE ) {
-                sendFileDataChunk(entry)
+                sendFileDataChunk(entry, walkerState)
             }  else {
                 sendFileDataSmall(entry, walkerState)
             }
@@ -362,6 +372,10 @@ class DirectoryScanner(
         val fileUri = DocumentsContract.buildDocumentUriUsingTree(entry.treeUri, entry.childDocId)
         val stream = context.contentResolver.openInputStream(fileUri)
             ?: throw Exception("Cannot open $fileUri")
+        // TODO: Test after by using the file descriptor => may be a 2 throughput increase ???
+        //   val pfd = contentResolver.openFileDescriptor(uri, "r")!!
+        //  val fis = FileInputStream(pfd.fileDescriptor)
+
 
         stream.use { input ->
             var read: Int
@@ -380,27 +394,76 @@ class DirectoryScanner(
         yield()
     }
 
-    private suspend fun sendFileDataChunk(entry: FSPFileEntry) {
-        // TODO
-    }
+    private suspend fun sendFileDataChunk(entry: FSPFileEntry, walkerState: FSPWalkerState) {
 
+        val fileUri = DocumentsContract.buildDocumentUriUsingTree(entry.treeUri, entry.childDocId)
+        val stream = context.contentResolver.openInputStream(fileUri)
+            ?: throw Exception("Cannot open $fileUri")
 
-    /**
-     * Computes SHA-256 hash of a file using the walkerState's file buffer.
-     */
-    private suspend fun computeSHA256(fileUri: Uri, walkerState: FSPWalkerState): String =
-        withContext(Dispatchers.IO) {
-            val digest = MessageDigest.getInstance("SHA-256")
-            val stream = context.contentResolver.openInputStream(fileUri)
-                ?: throw Exception("Cannot open $fileUri")
+        val chunkSize = FSPProtocol.FSP_CHUNK_SIZE
+        val buf = walkerState.fileBuf
 
-            stream.use {
-                var read: Int
-                while (it.read(walkerState.fileBuf).also { read = it } != -1) {
-                    digest.update(walkerState.fileBuf, 0, read)
+        val chunkHashes = mutableListOf<ByteArray>()
+
+        stream.use { input ->
+
+            var bytesInChunk = 0L
+            var chunkDigest = MessageDigest.getInstance("SHA-256")
+
+            var read: Int
+
+            while (input.read(buf).also { read = it } != -1) {
+
+                var offset = 0
+
+                while (offset < read) {
+
+                    val remainingChunk = chunkSize - bytesInChunk
+                    val toProcess = minOf(remainingChunk.toInt(), read - offset)
+
+                    // Update chunk SHA
+                    chunkDigest.update(buf, offset, toProcess)
+
+                    // Send data
+                    sshSender!!.sendBinary(buf.copyOfRange(offset, offset + toProcess), flush = false)
+
+                    bytesInChunk += toProcess
+                    offset += toProcess
+
+                    // Chunk completed
+                    if (bytesInChunk == chunkSize) {
+                        chunkHashes.add(chunkDigest.digest())
+                        chunkDigest = MessageDigest.getInstance("SHA-256")
+                        bytesInChunk = 0
+
+                        sshSender!!.flush()
+                        yield()
+                    }
                 }
             }
 
-            digest.digest().joinToString("") { "%02x".format(it) }
+            // Final partial chunk
+            if (bytesInChunk > 0) {
+                chunkHashes.add(chunkDigest.digest())
+            }
         }
+
+        // Store chunk info
+        entry.numChunks = chunkHashes.size.toLong()
+        entry.chunkHashes = chunkHashes.toTypedArray()
+
+        // Compute Merkle-0 root
+        val fileDigest = MessageDigest.getInstance("SHA-256")
+        for (h in entry.chunkHashes) {
+            fileDigest.update(h)
+        }
+
+        entry.fileHash = fileDigest.digest()
+
+        sshSender!!.flush()
+        yield()
+    }
+
+
+
 }
