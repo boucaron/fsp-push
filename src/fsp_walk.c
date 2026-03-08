@@ -273,7 +273,7 @@ int fsp_walk_dir_recursive(const char *root_path,
 
     // --- Call file batching callback for this directory ---
     if ( state->mode == FSP_WALK_MODE_RUN ) {
-        if (cbs && cbs->process_directory) {
+        if (cbs && cbs->process_directory && state->entries.num_files > 0 ) {
             int ret = cbs->process_directory(state);
             if (ret != 0) {
                 free(dir_array);
