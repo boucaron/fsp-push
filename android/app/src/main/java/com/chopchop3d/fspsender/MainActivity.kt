@@ -399,10 +399,35 @@ fun MainScreen(
         )
 
 
-        fun String.cleanAnsi() = this.replace("\u001B\\[[;?0-9]*[a-zA-Z]".toRegex(), "")
-        Text("Progress: ${walkerState.stderrServer.cleanAnsi()}")
+       /*
+        Text("Progress: ${walkerState.stderrServer}") */
+
+        ProgressDisplay(stderrServer = walkerState.stderrServer)
 
     }
+}
+@Composable
+fun ProgressDisplay(stderrServer: String) {
+    // Buffer to accumulate partial chunks
+    var buffer by remember { mutableStateOf("") }
+
+    fun String.cleanAnsi() = this.replace("\u001B\\[[;?0-9]*[a-zA-Z]".toRegex(), "")
+
+    // Update buffer with the latest chunk
+    buffer += stderrServer
+
+    // Find the last line starting with "Receiv"
+    val rawLine = buffer
+        .cleanAnsi()
+        .lines()
+        .lastOrNull { it.startsWith("Receiv") } ?: ""
+
+    // Cut the line at the end of ETA hh:mm:ss
+    val displayLine = Regex("ETA \\d{2}:\\d{2}:\\d{2}").find(rawLine)?.value?.let { eta ->
+        rawLine.substring(0, rawLine.indexOf(eta) + eta.length)
+    } ?: rawLine
+
+    Text("Progress: $displayLine")
 }
 
 @Composable
