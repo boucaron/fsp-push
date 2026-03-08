@@ -152,6 +152,7 @@ fun MainScreen(
         sshHost = snapshot.hostname ?: ""
         sshUser = snapshot.username ?: ""
         targetDirectory = snapshot.targetDirectory ?: ""
+        throughputText = snapshot.simulationThroughput ?: "10.0"
     }
 
     Column(

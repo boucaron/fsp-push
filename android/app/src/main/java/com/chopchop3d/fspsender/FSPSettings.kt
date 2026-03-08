@@ -16,7 +16,7 @@ data class SSHConfigSnapshot(
     val hostname: String?,
     val username: String?,
     val targetDirectory: String?,
-    var simulationThroughput: String?
+    val simulationThroughput: String?
 )
 
 object FSPSettings {
