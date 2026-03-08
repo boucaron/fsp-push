@@ -62,7 +62,10 @@ class DirectoryScanner(
                 throw RuntimeException("SSH connection failed")
             }
 
-            sshSender!!.startProcess("fsp-recv tests")
+            // TODO: FIXME target directory here
+            sshSender!!.startProcess("fsp-recv tests") { output ->
+                walkerState.stderrServer = output
+            }
             delay(100)
             sshSender!!.sendText(FSPSendVersion.sendCommand())
             // TODO: Handle various modes

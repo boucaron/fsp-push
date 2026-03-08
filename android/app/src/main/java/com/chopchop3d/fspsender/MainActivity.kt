@@ -128,14 +128,15 @@ fun MainScreen(
     var displayTotalSize by remember { mutableStateOf("") }
     var displayTotalSizeLong by remember { mutableStateOf(0L) }
     var displaySimulatedTime by remember { mutableStateOf("") }
+    var displayProgress by remember { mutableStateOf(walkerState.stderrServer) }
     var elapsedTime by remember { mutableStateOf(0L) }
 
-    var sshHost by remember { mutableStateOf("192.168.178.32") }
-    var sshUser by remember { mutableStateOf("admin") }
+    var sshHost by remember { mutableStateOf("") }
+    var sshUser by remember { mutableStateOf("") }
     var sshPassword by remember { mutableStateOf("") }
     var sshStatus by remember { mutableStateOf("SSH status: Idle") }
     var passwordVisible by remember { mutableStateOf(false) }
-    var targetDirectory by remember { mutableStateOf("tests") }
+    var targetDirectory by remember { mutableStateOf("") }
     var throughputText by remember { mutableStateOf(walkerState.dryRun.simulationThroughput.toString()) }
 
     val focusManager = LocalFocusManager.current
@@ -379,6 +380,7 @@ fun MainScreen(
             displayTotalFiles = walkerState.totalFiles
             displayTotalSizeLong = walkerState.totalBytes
             displaySimulatedTime = FSPDryRunStats.Formatter.formatDuration(walkerState.dryRun.simulationEvaluation)
+            displayProgress = walkerState.stderrServer
         }
 
         Text("Files: $displayTotalFiles")
@@ -397,6 +399,7 @@ fun MainScreen(
                 }
             }"
         )
+        Text("Progress : ${displayProgress}")
     }
 }
 

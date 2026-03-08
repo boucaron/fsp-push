@@ -53,7 +53,10 @@ data class FSPWalkerState(
     var lastSpeedTimestamp: Instant = Instant.now(),
     var lastSpeedBytes: Long = 0L,
     var lastThroughput: Double = 0.0,
-    var triggerDisplay: Long = 0L
+    var triggerDisplay: Long = 0L,
+
+    // Used to display progress
+    var stderrServer: String = ""
 ) {
     companion object {
         const val FSP_MAX_WALK_DEPTH = 1024          // Example default from protocol

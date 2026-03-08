@@ -58,7 +58,11 @@ class SshSender {
     }
 
     /** Start remote process (fsp-recv, tee, etc.) */
-    suspend fun startProcess(command: String): Boolean = withContext(Dispatchers.IO) {
+    /** Start remote process (fsp-recv, tee, etc.) */
+    suspend fun startProcess(
+        command: String,
+        stdErrCallback: ((String) -> Unit)? = null  // optional callback
+    ): Boolean = withContext(Dispatchers.IO) {
 
         val s = session
         if (s == null || !s.isConnected) {
@@ -80,8 +84,9 @@ class SshSender {
 
             stdin = execChannel!!.outputStream
 
-            startReader(stdout, "stdout")
-            startReader(stderr, "stderr")
+            // Start readers
+            startReader(stdout, "stdout", null)               // stdout ignored
+            startReader(stderr, "stderr", stdErrCallback)    // stderr uses callback
 
             delay(50) // give remote process time to attach stdin
 
@@ -96,21 +101,22 @@ class SshSender {
     }
 
     /** Continuously drain streams (important to avoid SSH deadlocks) */
-    private fun startReader(stream: InputStream, label: String) {
-
+    private fun startReader(
+        stream: InputStream,
+        label: String,
+        stdErrCallback: ((String) -> Unit)? = null // optional
+    ) {
         scope.launch {
-
             val buffer = ByteArray(4096)
-
             try {
-
                 while (true) {
-
                     val read = stream.read(buffer)
                     if (read == -1) break
 
                     if (read > 0) {
-                        Log.e(LOG_TAG, "$label: ${String(buffer, 0, read)}")
+                        val output = "$label: ${String(buffer, 0, read)}"
+                        Log.e(LOG_TAG, output)
+                        stdErrCallback?.invoke(output) // send output to callback
                     }
                 }
 
