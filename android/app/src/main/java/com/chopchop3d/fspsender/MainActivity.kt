@@ -136,6 +136,7 @@ fun MainScreen(
     var sshStatus by remember { mutableStateOf("SSH status: Idle") }
     var passwordVisible by remember { mutableStateOf(false) }
     var targetDirectory by remember { mutableStateOf("tests") }
+    var throughputText by remember { mutableStateOf(walkerState.dryRun.simulationThroughput.toString()) }
 
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -328,7 +329,8 @@ fun MainScreen(
                             context,
                             hostname = sshHost,
                             username = sshUser,
-                            targetDirectory = targetDirectory
+                            targetDirectory = targetDirectory,
+                            simulationThroughput = throughputText,
                         )
                         sshStatus = "Settings saved!"
                     }
@@ -340,6 +342,7 @@ fun MainScreen(
                         sshHost = snapshot.hostname ?: ""
                         sshUser = snapshot.username ?: ""
                         targetDirectory = snapshot.targetDirectory ?: ""
+                        throughputText = snapshot.simulationThroughput ?: ""
                         sshStatus = "Settings loaded!"
                     }
                 }) { Text("Load Settings") }
@@ -353,7 +356,6 @@ fun MainScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         Accordion(title = "Misc Settings") {
-            var throughputText by remember { mutableStateOf(walkerState.dryRun.simulationThroughput.toString()) }
 
             OutlinedTextField(
                 value = throughputText,
