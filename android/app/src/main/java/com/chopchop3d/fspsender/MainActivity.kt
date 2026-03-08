@@ -272,7 +272,13 @@ fun MainScreen(
                         contentDescription = "Toggle password visibility",
                         modifier = Modifier.clickable { passwordVisible = !passwordVisible }
                     )
-                }
+                },
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Password,
+                    autoCorrect = false,
+                    imeAction = ImeAction.Done
+                ),
+                singleLine = true
             )
             Spacer(modifier = Modifier.height(8.dp))
             ZenburnButton(onClick = {
