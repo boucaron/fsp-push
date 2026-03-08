@@ -201,6 +201,8 @@ class DirectoryScanner(
             if ( !dryRun ) {
 
 
+                Log.e("dfs", "finished with success")
+
                 sshSender?.sendText("END\n")
                 sshSender?.disconnect()
                 sshSender = null
@@ -286,9 +288,12 @@ class DirectoryScanner(
 
         sshSender!!.sendText(FSPSendFileList.sendCommand())
         sshSender!!.sendText("FILES: ${batch.size}\n")
-
         sendFileMetadataBinary(batch)
+
         sendFileData(batch, walkerState)
+
+        sshSender!!.sendText("HASH FILES: ${batch.size}\n")
+        sendFileMetadataBinary(batch)
 
 
 
