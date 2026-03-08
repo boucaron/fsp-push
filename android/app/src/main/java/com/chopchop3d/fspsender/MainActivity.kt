@@ -136,7 +136,6 @@ fun MainScreen(
     var sshStatus by remember { mutableStateOf("SSH status: Idle") }
     var passwordVisible by remember { mutableStateOf(false) }
     var targetDirectory by remember { mutableStateOf("") }
-    // var throughputText by remember { mutableStateOf(walkerState.dryRun.simulationThroughput.toString()) }
     var throughputText by remember { mutableStateOf("") }
 
     val focusManager = LocalFocusManager.current
@@ -161,12 +160,14 @@ fun MainScreen(
             .verticalScroll(scrollState)
             .padding(16.dp)
     ) {
+
+        Spacer(modifier = Modifier.height(16.dp))
         // Directory selection
         Button(onClick = { onPickDirectory() }) {
             Text("Select Source Directory")
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         if (selectedUri != null) {
             Row(
@@ -368,13 +369,12 @@ fun MainScreen(
 
             OutlinedTextField(
                 value = throughputText,
-              /*  onValueChange = { input ->
-                    throughputText = input
-                    input.toDoubleOrNull()?.let { walkerState.dryRun.simulationThroughput = it }
-                }, */
                 onValueChange = { throughputText = it },
                 label = { Text("Simulation Throughput (MB/s)") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Decimal  // allows input like "12.34"
+                ),
+                singleLine = true
             )
             Spacer(modifier = Modifier.height(8.dp))
         }
