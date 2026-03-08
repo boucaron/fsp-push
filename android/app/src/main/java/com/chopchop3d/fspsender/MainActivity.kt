@@ -143,6 +143,15 @@ fun MainScreen(
     val sshHelper = remember { SshHelper() }
     val scrollState = rememberScrollState()
 
+
+    // Load saved SSH settings once at start
+    LaunchedEffect(Unit) {
+        val snapshot = FSPSettings.getConfigSnapshot(context)
+        sshHost = snapshot.hostname ?: ""
+        sshUser = snapshot.username ?: ""
+        targetDirectory = snapshot.targetDirectory ?: ""
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -310,6 +319,34 @@ fun MainScreen(
                 }
             }) { Text("Test fsp-recv Connection") }
             Spacer(modifier = Modifier.height(8.dp))
+
+            // Save / Load buttons
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ZenburnButton(onClick = {
+                    scope.launch {
+                        FSPSettings.saveConfig(
+                            context,
+                            hostname = sshHost,
+                            username = sshUser,
+                            targetDirectory = targetDirectory
+                        )
+                        sshStatus = "Settings saved!"
+                    }
+                }) { Text("Save Settings") }
+
+                ZenburnButton(onClick = {
+                    scope.launch {
+                        val snapshot = FSPSettings.getConfigSnapshot(context)
+                        sshHost = snapshot.hostname ?: ""
+                        sshUser = snapshot.username ?: ""
+                        targetDirectory = snapshot.targetDirectory ?: ""
+                        sshStatus = "Settings loaded!"
+                    }
+                }) { Text("Load Settings") }
+            }
+
+
+
             Text(sshStatus)
         }
 
