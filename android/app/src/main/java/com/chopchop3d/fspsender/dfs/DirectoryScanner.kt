@@ -145,16 +145,7 @@ class DirectoryScanner(
                 val fileEntry = FSPFileEntry(name = fileName, size = size, treeUri = treeUri, childDocId = childDocId)
                 (walkerState.entries as MutableList).add(fileEntry)
 
-                /*
-                if (!dryRun) {
-                    val fileUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, childDocId)
-                    try {
-                        val sha256 = computeSHA256(fileUri, walkerState)
-                        Log.v("FSPSender", "File: $fileUri, SHA256: $sha256")
-                    } catch (e: Exception) {
-                        Log.e("FSPSender", "Error hashing file $fileUri", e)
-                    }
-                } else { */
+
                 if ( dryRun) {
                   walkerState.totalFiles++
                 }
