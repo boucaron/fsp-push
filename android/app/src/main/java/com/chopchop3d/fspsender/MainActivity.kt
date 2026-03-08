@@ -130,12 +130,12 @@ fun MainScreen(
     var displaySimulatedTime by remember { mutableStateOf("") }
     var elapsedTime by remember { mutableStateOf(0L) }
 
-    var sshHost by remember { mutableStateOf("") }
-    var sshUser by remember { mutableStateOf("") }
+    var sshHost by remember { mutableStateOf("192.168.178.32") }
+    var sshUser by remember { mutableStateOf("admin") }
     var sshPassword by remember { mutableStateOf("") }
     var sshStatus by remember { mutableStateOf("SSH status: Idle") }
     var passwordVisible by remember { mutableStateOf(false) }
-    var targetDirectory by remember { mutableStateOf("") }
+    var targetDirectory by remember { mutableStateOf("tests") }
 
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -191,21 +191,28 @@ fun MainScreen(
                             elapsedTime = 0L
                             dry_run = false
 
-                            val sshConfig = SshConfig(
-                                host = sshHost,
-                                username = sshUser,
-                                password = sshPassword,
-                                port = 22
-                            )
-                            val startTime = System.currentTimeMillis()
 
-                            onScanDirectory(selectedUri, dry_run, sshConfig) { updatedState ->
-                                walkerStateLocal = updatedState
-                                onWalkerStateChange(updatedState)
-                                elapsedTime = System.currentTimeMillis() - startTime
+                            if (!NetworkUtils.isNetworkAvailable(context)) {
+                                Log.e("FSP", "No network available, aborting SSH")
+                                statusMessage = "No network available ! Aborting !"
+                            } else {
+
+                                val sshConfig = SshConfig(
+                                    host = sshHost,
+                                    username = sshUser,
+                                    password = sshPassword,
+                                    port = 22
+                                )
+                                val startTime = System.currentTimeMillis()
+
+                                onScanDirectory(selectedUri, dry_run, sshConfig) { updatedState ->
+                                    walkerStateLocal = updatedState
+                                    onWalkerStateChange(updatedState)
+                                    elapsedTime = System.currentTimeMillis() - startTime
+                                }
+
+                                statusMessage = "Transfer completed"
                             }
-
-                            statusMessage = "Transfer completed"
                         }
                     }
                 ) { Text("Run") }
@@ -258,25 +265,48 @@ fun MainScreen(
             Spacer(modifier = Modifier.height(8.dp))
             ZenburnButton(onClick = {
                 scope.launch {
-                    sshStatus = "Connecting..."
-                    val success = sshHelper.testConnection(sshHost, sshUser, sshPassword)
-                    sshStatus = if (success) "SSH status: Connected!" else "SSH status: Failed"
+                    if (!NetworkUtils.isNetworkAvailable(context)) {
+                        Log.e("FSP", "No network available, aborting SSH")
+                        sshStatus = "No network available ! Aborting !"
+                    } else {
+                        sshStatus = "Connecting..."
+                        val success = sshHelper.testConnection(sshHost, sshUser, sshPassword)
+                        sshStatus = if (success) "SSH status: Connected!" else "SSH status: Failed"
+                    }
                 }
             }) { Text("Test SSH Connection") }
             Spacer(modifier = Modifier.height(8.dp))
             ZenburnButton(onClick = {
                 scope.launch {
-                    sshStatus = "Connecting..."
-                    val success = sshHelper.checkTargetDirectory(targetDirectory, sshHost, sshUser, sshPassword)
-                    sshStatus = if (success) "SSH: target directory exists" else "SSH: target directory does not exist"
+                    if (!NetworkUtils.isNetworkAvailable(context)) {
+                        Log.e("FSP", "No network available, aborting SSH")
+                        sshStatus = "No network available ! Aborting !"
+                    } else {
+                        sshStatus = "Connecting..."
+                        val success = sshHelper.checkTargetDirectory(
+                            targetDirectory,
+                            sshHost,
+                            sshUser,
+                            sshPassword
+                        )
+                        sshStatus =
+                            if (success) "SSH: target directory exists" else "SSH: target directory does not exist"
+                    }
                 }
             }) { Text("Test target directory") }
             Spacer(modifier = Modifier.height(8.dp))
             ZenburnButton(onClick = {
                 scope.launch {
-                    sshStatus = "Connecting..."
-                    val success = sshHelper.checkFSPReceiverExists(sshHost, sshUser, sshPassword)
-                    sshStatus = if (success) "SSH: fsp-recv exists on target host" else "SSH: fsp-recv does not exist or not in path"
+                    if (!NetworkUtils.isNetworkAvailable(context)) {
+                        Log.e("FSP", "No network available, aborting SSH")
+                        sshStatus = "No network available ! Aborting !"
+                    } else {
+                        sshStatus = "Connecting..."
+                        val success =
+                            sshHelper.checkFSPReceiverExists(sshHost, sshUser, sshPassword)
+                        sshStatus =
+                            if (success) "SSH: fsp-recv exists on target host" else "SSH: fsp-recv does not exist or not in path"
+                    }
                 }
             }) { Text("Test fsp-recv Connection") }
             Spacer(modifier = Modifier.height(8.dp))
