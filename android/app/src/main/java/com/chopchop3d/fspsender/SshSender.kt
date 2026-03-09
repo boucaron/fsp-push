@@ -114,7 +114,7 @@ class SshSender {
 
                     if (read > 0) {
                         val output = "$label: ${String(buffer, 0, read)}"
-                        Log.e(LOG_TAG, output)
+                        Log.d(LOG_TAG, output)
                         stdErrCallback?.invoke(output) // send output to callback
                     }
                 }
