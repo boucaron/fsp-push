@@ -120,6 +120,7 @@ fun MainScreen(
     val scope = rememberCoroutineScope()
     var statusMessage by remember { mutableStateOf("Idle") }
     var dry_run by remember { mutableStateOf(true) }
+    var dry_run_executed by remember {  mutableStateOf(false) }
 
     var walkerStateLocal by remember { mutableStateOf(walkerState) }
 
@@ -163,7 +164,7 @@ fun MainScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
         // Directory selection
-        Button(onClick = { onPickDirectory() }) {
+        Button(onClick = {  dry_run_executed = false; onPickDirectory() }) {
             Text("Select Source Directory")
         }
 
@@ -193,6 +194,7 @@ fun MainScreen(
                             }
 
                             statusMessage = "Dry-run completed"
+                            dry_run_executed = true
                         }
                     }
                 ) { Text("Dry-run") }
@@ -201,31 +203,41 @@ fun MainScreen(
                 ZenburnButton(
                     onClick = {
                         scope.launch {
-                            statusMessage = "Starting transfer..."
-                            elapsedTime = 0L
-                            dry_run = false
 
-
-                            if (!NetworkUtils.isNetworkAvailable(context)) {
-                                Log.e("FSP", "No network available, aborting SSH")
-                                statusMessage = "No network available ! Aborting !"
+                            if (!dry_run_executed) {
+                                statusMessage = "Click on Dry-run first"
                             } else {
 
-                                val sshConfig = SshConfig(
-                                    host = sshHost,
-                                    username = sshUser,
-                                    password = sshPassword,
-                                    port = 22
-                                )
-                                val startTime = System.currentTimeMillis()
+                                statusMessage = "Starting transfer..."
+                                elapsedTime = 0L
+                                dry_run = false
 
-                                onScanDirectory(selectedUri, dry_run, sshConfig) { updatedState ->
-                                    walkerStateLocal = updatedState
-                                    onWalkerStateChange(updatedState)
-                                    elapsedTime = System.currentTimeMillis() - startTime
+
+                                if (!NetworkUtils.isNetworkAvailable(context)) {
+                                    Log.e("FSP", "No network available, aborting SSH")
+                                    statusMessage = "No network available ! Aborting !"
+                                } else {
+
+                                    val sshConfig = SshConfig(
+                                        host = sshHost,
+                                        username = sshUser,
+                                        password = sshPassword,
+                                        port = 22
+                                    )
+                                    val startTime = System.currentTimeMillis()
+
+                                    onScanDirectory(
+                                        selectedUri,
+                                        dry_run,
+                                        sshConfig
+                                    ) { updatedState ->
+                                        walkerStateLocal = updatedState
+                                        onWalkerStateChange(updatedState)
+                                        elapsedTime = System.currentTimeMillis() - startTime
+                                    }
+
+                                    statusMessage = "Transfer completed"
                                 }
-
-                                statusMessage = "Transfer completed"
                             }
                         }
                     }
