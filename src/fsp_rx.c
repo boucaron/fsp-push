@@ -250,7 +250,7 @@ static int fsp_rx_handle_idle(fsp_receiver_state_t *rx, FILE *fp) {
         }
 
 
-        rx->state = FSP_RX_EXPECT_FILE_LIST;
+        rx->state = FSP_RX_IDLE; // Allow empty directories (no files)
         return 0;
     }
 
