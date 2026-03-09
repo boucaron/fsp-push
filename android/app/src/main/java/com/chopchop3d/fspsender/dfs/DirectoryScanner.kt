@@ -87,7 +87,7 @@ class DirectoryScanner(
             if ( rname.isEmpty()) {
                 rname = "."
             }
-            Log.e("dfs", "start : docId $docId rname $rname ")
+            Log.d("dfs", "start : docId $docId rname $rname ")
 
             if (!visitedDirs.add(docId)) return
 
@@ -104,7 +104,7 @@ class DirectoryScanner(
             walkerState.relPath = if (previousRel.isEmpty()) rname else "$previousRel/$rname"
             walkerState.fullPath = if (previousFull.isEmpty()) rname else "$previousFull/$rname"
 
-            Log.e("dfs", "walkerState.relPath ${walkerState.relPath}")
+            Log.d("dfs", "walkerState.relPath ${walkerState.relPath}")
 
             // Reset current entries for this folder
             walkerState.entries = mutableListOf()
@@ -227,7 +227,7 @@ class DirectoryScanner(
         )
 
         for ((batchIndex, batch) in batches.withIndex()) {
-            Log.e("Batch", "Processing batch #$batchIndex with ${batch.size} files")
+            Log.d("Batch", "Processing batch #$batchIndex with ${batch.size} files")
             processFileBatch(walkerState, batch)
         }
 
