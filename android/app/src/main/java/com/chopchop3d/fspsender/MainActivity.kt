@@ -47,6 +47,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.ui.Alignment
 import androidx.compose.animation.core.*
 import androidx.compose.ui.graphics.graphicsLayer
+import kotlinx.coroutines.delay
 
 enum class TransferState {
     IDLE,
@@ -148,6 +149,7 @@ fun MainScreen(
     var dryRunElapsedTime by remember { mutableStateOf(0L) }
     var runElapsedTime by remember { mutableStateOf(0L) }
     var startTime by remember { mutableStateOf(0L) }
+    var transferRunning by remember { mutableStateOf(false) }
 
     var sshHost by remember { mutableStateOf("") }
     var sshUser by remember { mutableStateOf("") }
@@ -299,6 +301,14 @@ fun MainScreen(
                                             port = 22
                                         )
                                         startTime = System.currentTimeMillis()
+                                        transferRunning = true
+
+                                        val elapsedJob = launch {
+                                            while (transferRunning) {
+                                                runElapsedTime = System.currentTimeMillis() - startTime
+                                                delay(1000L)
+                                            }
+                                        }
 
                                         onScanDirectory(
                                             selectedUri,
@@ -309,6 +319,8 @@ fun MainScreen(
                                             onWalkerStateChange(updatedState)
                                         }
 
+                                        transferRunning = false
+                                        elapsedJob.cancel()
                                         transferState = TransferState.SUCCESS
                                         statusMessage = "Transfer completed"
                                         scope.launch {
