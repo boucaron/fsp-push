@@ -462,33 +462,105 @@ fun MainScreen(
             /*
         Text("Progress: ${walkerState.stderrServer}") */
 
-            ProgressDisplay(stderrServer = walkerState.stderrServer)
+            ProgressDisplay(stderrServer = walkerState.stderrServer,
+                state = transferState)
 
         }
     }
 }
 @Composable
-fun ProgressDisplay(stderrServer: String) {
-    // Buffer to accumulate partial chunks
+fun ProgressDisplay(
+    stderrServer: String,
+    state: TransferState
+) {
     var buffer by remember { mutableStateOf("") }
 
-    fun String.cleanAnsi() = this.replace("\u001B\\[[;?0-9]*[a-zA-Z]".toRegex(), "")
+    fun String.cleanAnsi() =
+        this.replace("\u001B\\[[;?0-9]*[a-zA-Z]".toRegex(), "")
 
-    // Update buffer with the latest chunk
     buffer += stderrServer
 
-    // Find the last line starting with "Receiv"
-    val rawLine = buffer
+    val line = buffer
         .cleanAnsi()
         .lines()
         .lastOrNull { it.startsWith("Receiv") } ?: ""
 
-    // Cut the line at the end of ETA hh:mm:ss
-    val displayLine = Regex("ETA \\d{2}:\\d{2}:\\d{2}").find(rawLine)?.value?.let { eta ->
-        rawLine.substring(0, rawLine.indexOf(eta) + eta.length)
-    } ?: rawLine
+    // Parse transferred / total size (example: 123.4 MB / 567.8 MB)
+    val sizeMatch = Regex("(\\d+(?:\\.\\d+)?)\\s*([KMGTP]?B)\\s*/\\s*(\\d+(?:\\.\\d+)?)\\s*([KMGTP]?B)").find(line)
+    val transferred = sizeMatch?.let { parseSize(it.groupValues[1], it.groupValues[2]) } ?: 0L
+    val total = sizeMatch?.let { parseSize(it.groupValues[3], it.groupValues[4]) } ?: 1L // avoid division by zero
 
-    Text("Progress: $displayLine")
+    // Compute progress
+    val progressValue = if (state == TransferState.SUCCESS) 1f else (transferred.toFloat() / total.toFloat()).coerceIn(0f, 1f)
+    val animatedProgress by animateFloatAsState(progressValue)
+
+    // Parse speed & ETA
+    val speed =
+        Regex("(\\d+\\.?\\d*\\s*[KMGTP]?B/s)").find(line)?.groupValues?.get(1) ?: "--"
+    val eta =
+        Regex("ETA (\\d{2}:\\d{2}:\\d{2})").find(line)?.groupValues?.get(1) ?: "--:--:--"
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Text("Receiving data", style = MaterialTheme.typography.titleSmall)
+            Spacer(Modifier.height(8.dp))
+            LinearProgressIndicator(
+                progress = animatedProgress,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(8.dp)
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "${formatSize(transferred)} / ${formatSize(total)}  ${(animatedProgress * 100).toInt()}%",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(speed)
+                Text("ETA $eta")
+            }
+        }
+    }
+}
+
+// Helper: convert string size + unit to bytes
+fun parseSize(value: String, unit: String): Long {
+    val v = value.toDouble()
+    return when (unit.uppercase()) {
+        "B" -> v.toLong()
+        "KB" -> (v * 1024).toLong()
+        "MB" -> (v * 1024 * 1024).toLong()
+        "GB" -> (v * 1024 * 1024 * 1024).toLong()
+        "TB" -> (v * 1024L * 1024L * 1024L * 1024L).toLong()
+        else -> v.toLong()
+    }
+}
+
+// Helper: format bytes to human readable
+fun formatSize(bytes: Long): String {
+    val kb = 1024L
+    val mb = kb * 1024
+    val gb = mb * 1024
+    val tb = gb * 1024
+    return when {
+        bytes >= tb -> String.format("%.2f TB", bytes.toDouble() / tb)
+        bytes >= gb -> String.format("%.2f GB", bytes.toDouble() / gb)
+        bytes >= mb -> String.format("%.2f MB", bytes.toDouble() / mb)
+        bytes >= kb -> String.format("%.2f KB", bytes.toDouble() / kb)
+        else -> "$bytes B"
+    }
 }
 @Composable
 fun StatusBanner(state: TransferState, message: String) {
