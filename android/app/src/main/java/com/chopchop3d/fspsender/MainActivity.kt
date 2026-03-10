@@ -47,7 +47,6 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.ui.Alignment
 import androidx.compose.animation.core.*
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.animation.animateColorAsState
 
 enum class TransferState {
     IDLE,
@@ -146,7 +145,9 @@ fun MainScreen(
     var displayTotalSize by remember { mutableStateOf("") }
     var displayTotalSizeLong by remember { mutableStateOf(0L) }
     var displaySimulatedTime by remember { mutableStateOf("") }
-    var elapsedTime by remember { mutableStateOf(0L) }
+    var dryRunElapsedTime by remember { mutableStateOf(0L) }
+    var runElapsedTime by remember { mutableStateOf(0L) }
+    var startTime by remember { mutableStateOf(0L) }
 
     var sshHost by remember { mutableStateOf("") }
     var sshUser by remember { mutableStateOf("") }
@@ -206,19 +207,19 @@ fun MainScreen(
                             scope.launch {
                                 statusMessage = "Starting dry-run..."
                                 transferState = TransferState.RUNNING
-                                elapsedTime = 0L
+                                dryRunElapsedTime = 0L
                                 dry_run = true
                                 walkerStateLocal.totalBytes = 0
                                 walkerStateLocal.totalFiles = 0
                                 walkerStateLocal.dryRun.simulationThroughput =
                                     throughputText.toDouble();
-                                val startTime = System.currentTimeMillis()
+                                startTime = System.currentTimeMillis()
 
                                 onScanDirectory(selectedUri, dry_run, null) { updatedState ->
                                     walkerStateLocal = updatedState
                                     onWalkerStateChange(updatedState)
-                                    elapsedTime = System.currentTimeMillis() - startTime
                                 }
+                                dryRunElapsedTime = System.currentTimeMillis() - startTime
 
                                 statusMessage = "Dry-run completed"
                                 transferState = TransferState.SUCCESS
@@ -241,7 +242,7 @@ fun MainScreen(
                                 } else {
                                     transferState = TransferState.RUNNING
                                     statusMessage = "Starting transfer..."
-                                    elapsedTime = 0L
+                                    runElapsedTime = 0L
                                     dry_run = false
 
 
@@ -297,7 +298,7 @@ fun MainScreen(
                                             password = sshPassword,
                                             port = 22
                                         )
-                                        val startTime = System.currentTimeMillis()
+                                        startTime = System.currentTimeMillis()
 
                                         onScanDirectory(
                                             selectedUri,
@@ -306,7 +307,6 @@ fun MainScreen(
                                         ) { updatedState ->
                                             walkerStateLocal = updatedState
                                             onWalkerStateChange(updatedState)
-                                            elapsedTime = System.currentTimeMillis() - startTime
                                         }
 
                                         transferState = TransferState.SUCCESS
@@ -314,6 +314,7 @@ fun MainScreen(
                                         scope.launch {
                                             snackbarHostState.showSnackbar("Transfer completed successfully")
                                         }
+                                        runElapsedTime = System.currentTimeMillis() - startTime
                                     }
                                 }
                             }
@@ -491,29 +492,33 @@ fun MainScreen(
             Text("Total size: $displayTotalSize")
             Spacer(modifier = Modifier.height(8.dp))
             Text("Simulated time: $displaySimulatedTime")
-            Text("Elapsed time: ${elapsedTime / 1000}.${(elapsedTime % 1000) / 10} s")
-            Text(
-                "Mean throughput: ${
-                    if (!dry_run && elapsedTime > 0) {
-                        val mb = displayTotalSizeLong.toDouble() / (1024 * 1024)
-                        val sec = elapsedTime.toDouble() / 1000
-                        String.format("%.2f MB/s", mb / sec)
-                    } else {
-                        "0 MB/s"
-                    }
-                }"
-            )
+            Text("Dry-Run Elapsed time: ${dryRunElapsedTime / 1000}.${(dryRunElapsedTime % 1000) / 10} s")
+
 
 
             /*
         Text("Progress: ${walkerState.stderrServer}") */
 
-            val showProgress = (walkerState.stderrServer.contains("Receiv") &&
+            val showProgress = !dry_run && ((walkerState.stderrServer.contains("Receiv") &&
                     walkerState.stderrServer.isNotBlank()) ||
-                    transferState == TransferState.RUNNING
+                    transferState == TransferState.RUNNING ||
+                    transferState == TransferState.SUCCESS )
             if (showProgress) {
                 ProgressDisplay(stderrServer = walkerState.stderrServer,
                     state = transferState)
+
+                Text("Run Elapsed time: ${runElapsedTime / 1000}.${(runElapsedTime % 1000) / 10} s")
+                Text(
+                    "Mean throughput: ${
+                        if (!dry_run && runElapsedTime > 0) {
+                            val mb = displayTotalSizeLong.toDouble() / (1024 * 1024)
+                            val sec = runElapsedTime.toDouble() / 1000
+                            String.format("%.2f MB/s", mb / sec)
+                        } else {
+                            "0 MB/s"
+                        }
+                    }"
+                )
             }
 
         }
