@@ -141,7 +141,7 @@ fun MainScreen(
 
     var walkerStateLocal by remember { mutableStateOf(walkerState) }
 
-    var triggerDisplay = walkerStateLocal.triggerDisplay
+    val triggerDisplay by walkerStateLocal::triggerDisplay
     var displayTotalFiles by remember { mutableStateOf(0L) }
     var displayTotalSize by remember { mutableStateOf("") }
     var displayTotalSizeLong by remember { mutableStateOf(0L) }
@@ -432,6 +432,7 @@ fun MainScreen(
             // Text("Status: $statusMessage")
             StatusBanner(transferState, statusMessage)
             Spacer(modifier = Modifier.height(8.dp))
+
 
             LaunchedEffect(triggerDisplay) {
                 displayTotalSize = FSPDryRunStats.formatSize(walkerState.totalBytes)
