@@ -462,8 +462,13 @@ fun MainScreen(
             /*
         Text("Progress: ${walkerState.stderrServer}") */
 
-            ProgressDisplay(stderrServer = walkerState.stderrServer,
-                state = transferState)
+            val showProgress = (walkerState.stderrServer.contains("Receiv") &&
+                    walkerState.stderrServer.isNotBlank()) ||
+                    transferState == TransferState.RUNNING
+            if (showProgress) {
+                ProgressDisplay(stderrServer = walkerState.stderrServer,
+                    state = transferState)
+            }
 
         }
     }
