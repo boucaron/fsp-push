@@ -163,8 +163,9 @@ class DirectoryScanner(
                 else if ( (walkerState.totalBytes + size)/ tenMB  > (walkerState.totalBytes/tenMB)) {
                     walkerState.triggerDisplay ++;
                 }
-
-                walkerState.totalBytes += size
+                if ( dryRun) {
+                    walkerState.totalBytes += size
+                }
 
 
                 onProgress?.invoke(walkerState)

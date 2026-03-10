@@ -160,6 +160,10 @@ fun MainScreen(
     val keyboardController = LocalSoftwareKeyboardController.current
 
     val sshHelper = remember { SshHelper() }
+    var sshConnected by remember { mutableStateOf(false) }
+    var targetDirExists by remember { mutableStateOf(false) }
+    var fspRecvExists by remember { mutableStateOf(false) }
+
     val scrollState = rememberScrollState()
 
 
@@ -226,6 +230,7 @@ fun MainScreen(
                         }
                     ) { Text("Dry-run") }
 
+
                     // Run button
                     ZenburnButton(
                         onClick = {
@@ -244,10 +249,47 @@ fun MainScreen(
                                         Log.e("FSP", "No network available, aborting SSH")
                                         transferState = TransferState.ERROR
                                         statusMessage = "No network available ! Aborting !"
+                                        transferState = TransferState.ERROR
                                         scope.launch {
                                             snackbarHostState.showSnackbar("Transfer failed: no network")
                                         }
                                     } else {
+
+                                        // 1️⃣ Test SSH connection
+                                        val sshOk = sshHelper.testConnection(sshHost, sshUser, sshPassword)
+                                        if (!sshOk) {
+                                            statusMessage = "SSH connection failed"
+                                            transferState = TransferState.ERROR
+                                            scope.launch {
+                                                snackbarHostState.showSnackbar("Transfer failed: SSH connection failed")
+                                            }
+                                            return@launch
+                                        }
+
+                                        // 2️⃣ Test target directory exists
+                                        val targetOk = sshHelper.checkTargetDirectory(targetDirectory, sshHost, sshUser, sshPassword)
+                                        if (!targetOk) {
+                                            statusMessage = "Target directory missing on remote host"
+                                            transferState = TransferState.ERROR
+                                            scope.launch {
+                                                snackbarHostState.showSnackbar("Transfer failed: Target directory missing on remote host")
+                                            }
+                                            return@launch
+                                        }
+
+                                        // 3️⃣ Test fsp-recv exists
+                                        val fspOk = sshHelper.checkFSPReceiverExists(sshHost, sshUser, sshPassword)
+                                        if (!fspOk) {
+                                            statusMessage = "fsp-recv not found on remote host"
+                                            transferState = TransferState.ERROR
+                                            scope.launch {
+                                                snackbarHostState.showSnackbar("Transfer failed: fsp-recv not found on remote host")
+                                            }
+                                            return@launch
+                                        }
+
+                                        // ✅ All checks passed, start transfer
+                                        statusMessage = "All checks passed, starting transfer..."
 
                                         val sshConfig = SshConfig(
                                             host = sshHost,
@@ -338,6 +380,7 @@ fun MainScreen(
                         } else {
                             sshStatus = "Connecting..."
                             val success = sshHelper.testConnection(sshHost, sshUser, sshPassword)
+                            sshConnected = success
                             sshStatus =
                                 if (success) "SSH status: Connected!" else "SSH status: Failed"
                         }
@@ -357,6 +400,7 @@ fun MainScreen(
                                 sshUser,
                                 sshPassword
                             )
+                            targetDirExists = success
                             sshStatus =
                                 if (success) "SSH: target directory exists" else "SSH: target directory does not exist"
                         }
@@ -372,6 +416,7 @@ fun MainScreen(
                             sshStatus = "Connecting..."
                             val success =
                                 sshHelper.checkFSPReceiverExists(sshHost, sshUser, sshPassword)
+                            fspRecvExists = success
                             sshStatus =
                                 if (success) "SSH: fsp-recv exists on target host" else "SSH: fsp-recv does not exist or not in path"
                         }
