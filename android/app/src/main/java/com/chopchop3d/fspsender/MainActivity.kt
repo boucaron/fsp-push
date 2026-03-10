@@ -150,6 +150,8 @@ fun MainScreen(
     var runElapsedTime by remember { mutableStateOf(0L) }
     var startTime by remember { mutableStateOf(0L) }
     var transferRunning by remember { mutableStateOf(false) }
+    var transferredBytes by remember { mutableStateOf(0L) }
+    var totalBytes by remember { mutableStateOf(1L) } // avoid division by zero
 
     var sshHost by remember { mutableStateOf("") }
     var sshUser by remember { mutableStateOf("") }
@@ -517,18 +519,27 @@ fun MainScreen(
                     transferState == TransferState.SUCCESS )
             if (showProgress) {
                 ProgressDisplay(stderrServer = walkerState.stderrServer,
-                    state = transferState)
+                    state = transferState) { transferred, total ->
+                    transferredBytes = transferred
+                    totalBytes = total
+                }
 
                 Text("Run Elapsed time: ${runElapsedTime / 1000}.${(runElapsedTime % 1000) / 10} s")
+                // Compute live mean throughput
                 Text(
                     "Mean throughput: ${
                         if (!dry_run && runElapsedTime > 0) {
-                            val mb = displayTotalSizeLong.toDouble() / (1024 * 1024)
                             val sec = runElapsedTime.toDouble() / 1000
-                            String.format("%.2f MB/s", mb / sec)
-                        } else {
-                            "0 MB/s"
-                        }
+                            val speedBytes = transferredBytes.toDouble() / sec
+
+                            // Format dynamically
+                            when {
+                                speedBytes >= 1024.0 * 1024 * 1024 -> String.format("%.2f GB/s", speedBytes / (1024.0 * 1024 * 1024))
+                                speedBytes >= 1024.0 * 1024 -> String.format("%.2f MB/s", speedBytes / (1024.0 * 1024))
+                                speedBytes >= 1024.0 -> String.format("%.2f KB/s", speedBytes / 1024.0)
+                                else -> String.format("%.2f B/s", speedBytes)
+                            }
+                        } else "0 MB/s"
                     }"
                 )
             }
@@ -539,7 +550,8 @@ fun MainScreen(
 @Composable
 fun ProgressDisplay(
     stderrServer: String,
-    state: TransferState
+    state: TransferState,
+    onProgressUpdate: (transferred: Long, total: Long) -> Unit
 ) {
     var buffer by remember { mutableStateOf("") }
 
@@ -553,10 +565,13 @@ fun ProgressDisplay(
         .lines()
         .lastOrNull { it.startsWith("Receiv") } ?: ""
 
-    // Parse transferred / total size (example: 123.4 MB / 567.8 MB)
+    // Parse transferred / total size (e.g., "123.4 MB / 567.8 MB")
     val sizeMatch = Regex("(\\d+(?:\\.\\d+)?)\\s*([KMGTP]?B)\\s*/\\s*(\\d+(?:\\.\\d+)?)\\s*([KMGTP]?B)").find(line)
     val transferred = sizeMatch?.let { parseSize(it.groupValues[1], it.groupValues[2]) } ?: 0L
-    val total = sizeMatch?.let { parseSize(it.groupValues[3], it.groupValues[4]) } ?: 1L // avoid division by zero
+    val total = sizeMatch?.let { parseSize(it.groupValues[3], it.groupValues[4]) } ?: 1L
+
+    // Notify parent composable
+    onProgressUpdate(transferred, total)
 
     // Compute progress
     val progressValue = if (state == TransferState.SUCCESS) 1f else (transferred.toFloat() / total.toFloat()).coerceIn(0f, 1f)
