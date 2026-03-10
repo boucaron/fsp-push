@@ -41,6 +41,21 @@ import com.chopchop3d.fspsender.ui.theme.ZenburnButton
 import kotlinx.coroutines.launch
 import java.time.Instant
 
+
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.ui.Alignment
+import androidx.compose.animation.core.*
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.animateColorAsState
+
+enum class TransferState {
+    IDLE,
+    RUNNING,
+    SUCCESS,
+    ERROR
+}
+
 class MainActivity : ComponentActivity() {
 
     private var walkerState by mutableStateOf(
@@ -119,6 +134,8 @@ fun MainScreen(
 ) {
     val scope = rememberCoroutineScope()
     var statusMessage by remember { mutableStateOf("Idle") }
+    var transferState by remember { mutableStateOf(TransferState.IDLE) }
+    val snackbarHostState = remember { SnackbarHostState() }
     var dry_run by remember { mutableStateOf(true) }
     var dry_run_executed by remember {  mutableStateOf(false) }
 
@@ -155,277 +172,299 @@ fun MainScreen(
         throughputText = snapshot.simulationThroughput ?: "10.0"
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(scrollState)
-            .padding(16.dp)
-    ) {
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) }
+    ) { padding ->
 
-        Spacer(modifier = Modifier.height(16.dp))
-        // Directory selection
-        Button(onClick = {  dry_run_executed = false; onPickDirectory() }) {
-            Text("Select Source Directory")
-        }
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(scrollState)
+                .padding(16.dp)
+        ) {
 
-        Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+            // Directory selection
+            Button(onClick = { dry_run_executed = false; onPickDirectory() }) {
+                Text("Select Source Directory")
+            }
 
-        if (selectedUri != null) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                // Dry-run button
-                ZenburnButton(
-                    onClick = {
-                        scope.launch {
-                            statusMessage = "Starting dry-run..."
-                            elapsedTime = 0L
-                            dry_run = true
-                            walkerStateLocal.totalBytes = 0
-                            walkerStateLocal.totalFiles = 0
-                            walkerStateLocal.dryRun.simulationThroughput = throughputText.toDouble();
-                            val startTime = System.currentTimeMillis()
+            Spacer(modifier = Modifier.height(8.dp))
 
-                            onScanDirectory(selectedUri, dry_run, null) { updatedState ->
-                                walkerStateLocal = updatedState
-                                onWalkerStateChange(updatedState)
-                                elapsedTime = System.currentTimeMillis() - startTime
-                            }
-
-                            statusMessage = "Dry-run completed"
-                            dry_run_executed = true
-                        }
-                    }
-                ) { Text("Dry-run") }
-
-                // Run button
-                ZenburnButton(
-                    onClick = {
-                        scope.launch {
-
-                            if (!dry_run_executed) {
-                                statusMessage = "Click on Dry-run first"
-                            } else {
-
-                                statusMessage = "Starting transfer..."
+            if (selectedUri != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Dry-run button
+                    ZenburnButton(
+                        onClick = {
+                            scope.launch {
+                                statusMessage = "Starting dry-run..."
+                                transferState = TransferState.RUNNING
                                 elapsedTime = 0L
-                                dry_run = false
+                                dry_run = true
+                                walkerStateLocal.totalBytes = 0
+                                walkerStateLocal.totalFiles = 0
+                                walkerStateLocal.dryRun.simulationThroughput =
+                                    throughputText.toDouble();
+                                val startTime = System.currentTimeMillis()
 
+                                onScanDirectory(selectedUri, dry_run, null) { updatedState ->
+                                    walkerStateLocal = updatedState
+                                    onWalkerStateChange(updatedState)
+                                    elapsedTime = System.currentTimeMillis() - startTime
+                                }
 
-                                if (!NetworkUtils.isNetworkAvailable(context)) {
-                                    Log.e("FSP", "No network available, aborting SSH")
-                                    statusMessage = "No network available ! Aborting !"
+                                statusMessage = "Dry-run completed"
+                                transferState = TransferState.SUCCESS
+                                scope.launch {
+                                    snackbarHostState.showSnackbar("Dry-run completed")
+                                }
+                                dry_run_executed = true
+                            }
+                        }
+                    ) { Text("Dry-run") }
+
+                    // Run button
+                    ZenburnButton(
+                        onClick = {
+                            scope.launch {
+
+                                if (!dry_run_executed) {
+                                    statusMessage = "Click on Dry-run first"
                                 } else {
+                                    transferState = TransferState.RUNNING
+                                    statusMessage = "Starting transfer..."
+                                    elapsedTime = 0L
+                                    dry_run = false
 
-                                    val sshConfig = SshConfig(
-                                        host = sshHost,
-                                        username = sshUser,
-                                        password = sshPassword,
-                                        port = 22
-                                    )
-                                    val startTime = System.currentTimeMillis()
 
-                                    onScanDirectory(
-                                        selectedUri,
-                                        dry_run,
-                                        sshConfig
-                                    ) { updatedState ->
-                                        walkerStateLocal = updatedState
-                                        onWalkerStateChange(updatedState)
-                                        elapsedTime = System.currentTimeMillis() - startTime
+                                    if (!NetworkUtils.isNetworkAvailable(context)) {
+                                        Log.e("FSP", "No network available, aborting SSH")
+                                        transferState = TransferState.ERROR
+                                        statusMessage = "No network available ! Aborting !"
+                                        scope.launch {
+                                            snackbarHostState.showSnackbar("Transfer failed: no network")
+                                        }
+                                    } else {
+
+                                        val sshConfig = SshConfig(
+                                            host = sshHost,
+                                            username = sshUser,
+                                            password = sshPassword,
+                                            port = 22
+                                        )
+                                        val startTime = System.currentTimeMillis()
+
+                                        onScanDirectory(
+                                            selectedUri,
+                                            dry_run,
+                                            sshConfig
+                                        ) { updatedState ->
+                                            walkerStateLocal = updatedState
+                                            onWalkerStateChange(updatedState)
+                                            elapsedTime = System.currentTimeMillis() - startTime
+                                        }
+
+                                        transferState = TransferState.SUCCESS
+                                        statusMessage = "Transfer completed"
+                                        scope.launch {
+                                            snackbarHostState.showSnackbar("Transfer completed successfully")
+                                        }
                                     }
-
-                                    statusMessage = "Transfer completed"
                                 }
                             }
                         }
-                    }
-                ) { Text("Run") }
+                    ) { Text("Run") }
+                }
             }
-        }
 
-        Spacer(modifier = Modifier.height(8.dp))
-        OutlinedTextField(
-            value = targetDirectory,
-            onValueChange = { targetDirectory = it },
-            label = { Text("Target Directory") },
-            modifier = Modifier.fillMaxWidth(),
-            keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Next),
-            keyboardActions = KeyboardActions(
-                onNext = { focusManager.moveFocus(FocusDirection.Down) }
-            )
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Accordion(title = "SSH Settings") {
-            OutlinedTextField(
-                value = sshHost,
-                onValueChange = { sshHost = it },
-                label = { Text("SSH Host") },
-                modifier = Modifier.fillMaxWidth()
-            )
             Spacer(modifier = Modifier.height(8.dp))
             OutlinedTextField(
-                value = sshUser,
-                onValueChange = { sshUser = it },
-                label = { Text("SSH Username") },
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            OutlinedTextField(
-                value = sshPassword,
-                onValueChange = { sshPassword = it },
-                label = { Text("SSH Password") },
+                value = targetDirectory,
+                onValueChange = { targetDirectory = it },
+                label = { Text("Target Directory") },
                 modifier = Modifier.fillMaxWidth(),
-                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                trailingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.Lock,
-                        contentDescription = "Toggle password visibility",
-                        modifier = Modifier.clickable { passwordVisible = !passwordVisible }
-                    )
-                },
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Password,
-                    autoCorrect = false,
-                    imeAction = ImeAction.Done
-                ),
-                singleLine = true
+                keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Next),
+                keyboardActions = KeyboardActions(
+                    onNext = { focusManager.moveFocus(FocusDirection.Down) }
+                )
             )
-            Spacer(modifier = Modifier.height(8.dp))
-            ZenburnButton(onClick = {
-                scope.launch {
-                    if (!NetworkUtils.isNetworkAvailable(context)) {
-                        Log.e("FSP", "No network available, aborting SSH")
-                        sshStatus = "No network available ! Aborting !"
-                    } else {
-                        sshStatus = "Connecting..."
-                        val success = sshHelper.testConnection(sshHost, sshUser, sshPassword)
-                        sshStatus = if (success) "SSH status: Connected!" else "SSH status: Failed"
-                    }
-                }
-            }) { Text("Test SSH Connection") }
-            Spacer(modifier = Modifier.height(8.dp))
-            ZenburnButton(onClick = {
-                scope.launch {
-                    if (!NetworkUtils.isNetworkAvailable(context)) {
-                        Log.e("FSP", "No network available, aborting SSH")
-                        sshStatus = "No network available ! Aborting !"
-                    } else {
-                        sshStatus = "Connecting..."
-                        val success = sshHelper.checkTargetDirectory(
-                            targetDirectory,
-                            sshHost,
-                            sshUser,
-                            sshPassword
-                        )
-                        sshStatus =
-                            if (success) "SSH: target directory exists" else "SSH: target directory does not exist"
-                    }
-                }
-            }) { Text("Test target directory") }
-            Spacer(modifier = Modifier.height(8.dp))
-            ZenburnButton(onClick = {
-                scope.launch {
-                    if (!NetworkUtils.isNetworkAvailable(context)) {
-                        Log.e("FSP", "No network available, aborting SSH")
-                        sshStatus = "No network available ! Aborting !"
-                    } else {
-                        sshStatus = "Connecting..."
-                        val success =
-                            sshHelper.checkFSPReceiverExists(sshHost, sshUser, sshPassword)
-                        sshStatus =
-                            if (success) "SSH: fsp-recv exists on target host" else "SSH: fsp-recv does not exist or not in path"
-                    }
-                }
-            }) { Text("Test fsp-recv Connection") }
-            Spacer(modifier = Modifier.height(8.dp))
 
-            // Save / Load buttons
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Accordion(title = "SSH Settings") {
+                OutlinedTextField(
+                    value = sshHost,
+                    onValueChange = { sshHost = it },
+                    label = { Text("SSH Host") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = sshUser,
+                    onValueChange = { sshUser = it },
+                    label = { Text("SSH Username") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = sshPassword,
+                    onValueChange = { sshPassword = it },
+                    label = { Text("SSH Password") },
+                    modifier = Modifier.fillMaxWidth(),
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = "Toggle password visibility",
+                            modifier = Modifier.clickable { passwordVisible = !passwordVisible }
+                        )
+                    },
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Password,
+                        autoCorrect = false,
+                        imeAction = ImeAction.Done
+                    ),
+                    singleLine = true
+                )
+                Spacer(modifier = Modifier.height(8.dp))
                 ZenburnButton(onClick = {
                     scope.launch {
-                        FSPSettings.saveConfig(
-                            context,
-                            hostname = sshHost,
-                            username = sshUser,
-                            targetDirectory = targetDirectory,
-                            simulationThroughput = throughputText,
-                        )
-                        sshStatus = "Settings saved!"
+                        if (!NetworkUtils.isNetworkAvailable(context)) {
+                            Log.e("FSP", "No network available, aborting SSH")
+                            sshStatus = "No network available ! Aborting !"
+                        } else {
+                            sshStatus = "Connecting..."
+                            val success = sshHelper.testConnection(sshHost, sshUser, sshPassword)
+                            sshStatus =
+                                if (success) "SSH status: Connected!" else "SSH status: Failed"
+                        }
                     }
-                }) { Text("Save Settings") }
-
+                }) { Text("Test SSH Connection") }
+                Spacer(modifier = Modifier.height(8.dp))
                 ZenburnButton(onClick = {
                     scope.launch {
-                        val snapshot = FSPSettings.getConfigSnapshot(context)
-                        sshHost = snapshot.hostname ?: ""
-                        sshUser = snapshot.username ?: ""
-                        targetDirectory = snapshot.targetDirectory ?: ""
-                        throughputText = snapshot.simulationThroughput ?: ""
-                        sshStatus = "Settings loaded!"
+                        if (!NetworkUtils.isNetworkAvailable(context)) {
+                            Log.e("FSP", "No network available, aborting SSH")
+                            sshStatus = "No network available ! Aborting !"
+                        } else {
+                            sshStatus = "Connecting..."
+                            val success = sshHelper.checkTargetDirectory(
+                                targetDirectory,
+                                sshHost,
+                                sshUser,
+                                sshPassword
+                            )
+                            sshStatus =
+                                if (success) "SSH: target directory exists" else "SSH: target directory does not exist"
+                        }
                     }
-                }) { Text("Load Settings") }
+                }) { Text("Test target directory") }
+                Spacer(modifier = Modifier.height(8.dp))
+                ZenburnButton(onClick = {
+                    scope.launch {
+                        if (!NetworkUtils.isNetworkAvailable(context)) {
+                            Log.e("FSP", "No network available, aborting SSH")
+                            sshStatus = "No network available ! Aborting !"
+                        } else {
+                            sshStatus = "Connecting..."
+                            val success =
+                                sshHelper.checkFSPReceiverExists(sshHost, sshUser, sshPassword)
+                            sshStatus =
+                                if (success) "SSH: fsp-recv exists on target host" else "SSH: fsp-recv does not exist or not in path"
+                        }
+                    }
+                }) { Text("Test fsp-recv Connection") }
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Save / Load buttons
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ZenburnButton(onClick = {
+                        scope.launch {
+                            FSPSettings.saveConfig(
+                                context,
+                                hostname = sshHost,
+                                username = sshUser,
+                                targetDirectory = targetDirectory,
+                                simulationThroughput = throughputText,
+                            )
+                            sshStatus = "Settings saved!"
+                        }
+                    }) { Text("Save Settings") }
+
+                    ZenburnButton(onClick = {
+                        scope.launch {
+                            val snapshot = FSPSettings.getConfigSnapshot(context)
+                            sshHost = snapshot.hostname ?: ""
+                            sshUser = snapshot.username ?: ""
+                            targetDirectory = snapshot.targetDirectory ?: ""
+                            throughputText = snapshot.simulationThroughput ?: ""
+                            sshStatus = "Settings loaded!"
+                        }
+                    }) { Text("Load Settings") }
+                }
+
+
+
+                Text(sshStatus)
             }
 
+            Spacer(modifier = Modifier.height(16.dp))
 
+            Accordion(title = "Misc Settings") {
 
-            Text(sshStatus)
-        }
+                OutlinedTextField(
+                    value = throughputText,
+                    onValueChange = { throughputText = it },
+                    label = { Text("Simulation Throughput (MB/s)") },
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Decimal  // allows input like "12.34"
+                    ),
+                    singleLine = true
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
 
-        Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-        Accordion(title = "Misc Settings") {
-
-            OutlinedTextField(
-                value = throughputText,
-                onValueChange = { throughputText = it },
-                label = { Text("Simulation Throughput (MB/s)") },
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Decimal  // allows input like "12.34"
-                ),
-                singleLine = true
-            )
+            // Text("Status: $statusMessage")
+            StatusBanner(transferState, statusMessage)
             Spacer(modifier = Modifier.height(8.dp))
-        }
 
-        Spacer(modifier = Modifier.height(16.dp))
+            LaunchedEffect(triggerDisplay) {
+                displayTotalSize = FSPDryRunStats.formatSize(walkerState.totalBytes)
+                displayTotalFiles = walkerState.totalFiles
+                displayTotalSizeLong = walkerState.totalBytes
+                displaySimulatedTime =
+                    FSPDryRunStats.Formatter.formatDuration(walkerState.dryRun.simulationEvaluation)
+            }
 
-        Text("Status: $statusMessage")
-        Spacer(modifier = Modifier.height(8.dp))
-
-        LaunchedEffect(triggerDisplay) {
-            displayTotalSize = FSPDryRunStats.formatSize(walkerState.totalBytes)
-            displayTotalFiles = walkerState.totalFiles
-            displayTotalSizeLong = walkerState.totalBytes
-            displaySimulatedTime = FSPDryRunStats.Formatter.formatDuration(walkerState.dryRun.simulationEvaluation)
-        }
-
-        Text("Files: $displayTotalFiles")
-        Text("Total size: $displayTotalSize")
-        Spacer(modifier = Modifier.height(8.dp))
-        Text("Simulated time: $displaySimulatedTime")
-        Text("Elapsed time: ${elapsedTime / 1000}.${(elapsedTime % 1000) / 10} s")
-        Text(
-            "Mean throughput: ${
-                if (!dry_run && elapsedTime > 0) {
-                    val mb = displayTotalSizeLong.toDouble() / (1024 * 1024)
-                    val sec = elapsedTime.toDouble() / 1000
-                    String.format("%.2f MB/s", mb / sec)
-                } else {
-                    "0 MB/s"
-                }
-            }"
-        )
+            Text("Files: $displayTotalFiles")
+            Text("Total size: $displayTotalSize")
+            Spacer(modifier = Modifier.height(8.dp))
+            Text("Simulated time: $displaySimulatedTime")
+            Text("Elapsed time: ${elapsedTime / 1000}.${(elapsedTime % 1000) / 10} s")
+            Text(
+                "Mean throughput: ${
+                    if (!dry_run && elapsedTime > 0) {
+                        val mb = displayTotalSizeLong.toDouble() / (1024 * 1024)
+                        val sec = elapsedTime.toDouble() / 1000
+                        String.format("%.2f MB/s", mb / sec)
+                    } else {
+                        "0 MB/s"
+                    }
+                }"
+            )
 
 
-       /*
+            /*
         Text("Progress: ${walkerState.stderrServer}") */
 
-        ProgressDisplay(stderrServer = walkerState.stderrServer)
+            ProgressDisplay(stderrServer = walkerState.stderrServer)
 
+        }
     }
 }
 @Composable
@@ -450,6 +489,70 @@ fun ProgressDisplay(stderrServer: String) {
     } ?: rawLine
 
     Text("Progress: $displayLine")
+}
+@Composable
+fun StatusBanner(state: TransferState, message: String) {
+
+    val containerColor = when (state) {
+        TransferState.IDLE -> MaterialTheme.colorScheme.surfaceVariant
+        TransferState.RUNNING -> MaterialTheme.colorScheme.primaryContainer
+        TransferState.SUCCESS -> MaterialTheme.colorScheme.tertiaryContainer
+        TransferState.ERROR -> MaterialTheme.colorScheme.errorContainer
+    }
+
+    val contentColor = when (state) {
+        TransferState.ERROR -> MaterialTheme.colorScheme.onErrorContainer
+        else -> MaterialTheme.colorScheme.onSurface
+    }
+
+    val icon = when (state) {
+        TransferState.SUCCESS -> Icons.Default.CheckCircle
+        else -> Icons.Default.Info
+    }
+
+    // Rotation only used when running
+    val infiniteTransition = rememberInfiniteTransition(label = "")
+    val rotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = if (state == TransferState.RUNNING) 360f else 0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = LinearEasing)
+        ),
+        label = ""
+    )
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = contentColor,
+                modifier = Modifier.graphicsLayer {
+                    if (state == TransferState.RUNNING) {
+                        rotationZ = rotation
+                    }
+                }
+            )
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            Text(
+                text = message,
+                color = contentColor,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
 }
 
 @Composable
