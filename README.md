@@ -21,6 +21,26 @@ FSP is designed for fast snapshot transfers rather than full filesystem replicat
 
 ---
 
+# Predictable Performance
+
+FSP uses a **single forward streaming model** with no application-level
+request/acknowledgment cycles.
+
+Because the entire snapshot is transmitted as one continuous stream,
+performance is largely independent of file count.
+
+Throughput is typically limited only by:
+
+* storage speed
+* CPU hashing performance
+* network bandwidth
+* transport overhead (for example SSH encryption)
+
+This design allows FSP to maintain consistent performance across
+mixed workloads containing both large files and many small files.
+
+---
+
 # Quick Start
 
 Send a directory to a remote machine over SSH:
@@ -76,7 +96,7 @@ Transfer modes:
 Other options:
 
 ```
---dry-run       scan files and estimate transfer size
+--dry-run       scan files and estimate transfer size  
 --version       show version information
 ```
 
@@ -163,10 +183,10 @@ See **docs/android.md** for details.
 Additional documentation is available in the `docs` directory:
 
 ```
-docs/design.md        protocol design and integrity model
-docs/performance.md   performance characteristics
-docs/transports.md    transport usage and tuning
-docs/android.md       Android sender application
+docs/design.md
+docs/performance.md
+docs/transports.md
+docs/android.md
 ```
 
 ---
