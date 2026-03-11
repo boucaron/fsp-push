@@ -238,4 +238,4 @@ make
 
 # License
 
-Copyright (c) 2026 Julien Boucaron
+FSP is released under the **MIT License** (© 2026–present Julien Boucaron). See the LICENSE file for details.
