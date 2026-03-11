@@ -216,6 +216,6 @@ Install the APK (from releases), grant SAF access, enter remote details, select 
 - Android (arm64 sender app); receiver via cross-compiled C if needed (niche)
 - OpenSSL library (or static-linked binary)
 
-FSP - Forward Snapshot Protocol - sender
+FSP - Forward Snapshot Protocol
 Version: 0.1
 (c) 2026 - Julien BOUCARON
