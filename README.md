@@ -6,6 +6,8 @@ It transfers directories as a single forward stream with per-file SHA-256 integr
 
 > Think of it as a streaming archive combined with a high-throughput file deployer.
 
+**Design philosophy:** keep the protocol simple, deterministic, and optimized for single-pass snapshot streaming.
+
 ---
 
 # Features
@@ -18,26 +20,6 @@ It transfers directories as a single forward stream with per-file SHA-256 integr
 * **Minimal scope** — transfers only files and directories for predictable behavior
 
 FSP is designed for fast snapshot transfers rather than full filesystem replication.
-
----
-
-# Predictable Performance
-
-FSP uses a **single forward streaming model** with no application-level
-request/acknowledgment cycles.
-
-Because the entire snapshot is transmitted as one continuous stream,
-performance is largely independent of file count.
-
-Throughput is typically limited only by:
-
-* storage speed
-* CPU hashing performance
-* network bandwidth
-* transport overhead (for example SSH encryption)
-
-This design allows FSP to maintain consistent performance across
-mixed workloads containing both large files and many small files.
 
 ---
 
@@ -68,6 +50,54 @@ fsp-send /data | zstd | ssh host "zstd -d | fsp-recv /dest"
 ```
 
 Because FSP is a pure byte stream, it integrates easily with standard Unix tools.
+
+---
+
+# Architecture
+
+```
+┌──────────────┐
+│ Source files │
+└──────┬───────┘
+       │
+       ▼
+   fsp-send
+       │
+       │  streaming protocol
+       │  (SSH / TCP / TLS)
+       ▼
+   fsp-recv
+       │
+       ▼
+┌───────────────┐
+│ Destination   │
+│ filesystem    │
+└───────────────┘
+```
+
+The sender walks the source directory and streams files sequentially.
+The receiver reconstructs the filesystem structure and verifies file
+integrity before committing each file.
+
+---
+
+# Predictable Performance
+
+FSP uses a **single forward streaming model** with no application-level
+request/acknowledgment cycles.
+
+Because the entire snapshot is transmitted as one continuous stream,
+performance is largely independent of file count.
+
+Throughput is typically limited only by:
+
+* storage speed
+* CPU hashing performance
+* network bandwidth
+* transport overhead (for example SSH encryption)
+
+This design allows FSP to maintain consistent performance across
+mixed workloads containing both large files and many small files.
 
 ---
 
