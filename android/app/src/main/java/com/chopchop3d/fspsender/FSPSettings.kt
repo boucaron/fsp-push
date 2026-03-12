@@ -16,7 +16,8 @@ data class SSHConfigSnapshot(
     val hostname: String?,
     val username: String?,
     val targetDirectory: String?,
-    val simulationThroughput: String?
+    val simulationThroughput: String?,
+    val mode: String?
 )
 
 object FSPSettings {
@@ -27,19 +28,23 @@ object FSPSettings {
     private val TARGET_DIR_KEY = stringPreferencesKey("target_directory")
     private val SIMULATION_THROUGHPUT = stringPreferencesKey("simulation_throughput")
 
+    private val MODE = stringPreferencesKey("mode")
+
     // Save config (example)
     suspend fun saveConfig(
         context: Context,
         hostname: String,
         username: String,
         targetDirectory: String,
-        simulationThroughput: String
+        simulationThroughput: String,
+        mode: String
     ) {
         context.fspDataStore.edit { prefs ->
             prefs[HOSTNAME_KEY] = hostname
             prefs[USERNAME_KEY] = username
             prefs[TARGET_DIR_KEY] = targetDirectory
             prefs[SIMULATION_THROUGHPUT] = simulationThroughput
+            prefs[MODE] = mode
         }
     }
 
@@ -50,7 +55,8 @@ object FSPSettings {
             hostname = prefs[HOSTNAME_KEY],
             username = prefs[USERNAME_KEY],
             targetDirectory = prefs[TARGET_DIR_KEY],
-            simulationThroughput = prefs[SIMULATION_THROUGHPUT]
+            simulationThroughput = prefs[SIMULATION_THROUGHPUT],
+            mode = prefs[MODE]
         )
     }
 
@@ -66,4 +72,7 @@ object FSPSettings {
 
     fun getSimulationThroughput(context: Context): Flow<String?> = context.fspDataStore.data
         .map { it[SIMULATION_THROUGHPUT] }
+
+    fun getMode(context: Context): Flow<String?> = context.fspDataStore.data
+        .map { it[MODE] }
 }

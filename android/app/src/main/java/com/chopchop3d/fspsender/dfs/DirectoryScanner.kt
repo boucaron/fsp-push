@@ -27,7 +27,9 @@ import java.security.MessageDigest
 class DirectoryScanner(
     private val context: ComponentActivity,
     private val walkerState: FSPWalkerState,
-    private val sshConfig: SshConfig?
+    private val sshConfig: SshConfig?,
+    private val targetDirectory: String,
+    private val mode: String
 ) {
 
     private val visitedDirs = mutableSetOf<String>()
@@ -44,6 +46,8 @@ class DirectoryScanner(
     suspend fun scan(
         treeUri: Uri,
         dryRun: Boolean,
+        targetDirectory: String,
+        mode: String,
         onProgress: ((walkerState: FSPWalkerState) -> Unit)? = null
     ): FSPWalkerState = withContext(Dispatchers.IO) {
 
@@ -63,14 +67,19 @@ class DirectoryScanner(
             }
 
 
-            // TODO: FIXME target directory here
-            sshSender!!.startProcess("fsp-recv tests") { output ->
+
+            sshSender!!.startProcess("fsp-recv " + targetDirectory) { output ->
                 walkerState.stderrServer = output
             }
             delay(100)
             sshSender!!.sendText(FSPSendVersion.sendCommand())
-            // TODO: Handle various modes
-            sshSender!!.sendText(FSPSendMode.sendCommandStatic(FSPSendMode.FSP_APPEND))
+            if ( mode.equals("append")) {
+                sshSender!!.sendText(FSPSendMode.sendCommandStatic(FSPSendMode.FSP_APPEND))
+            } else if ( mode.equals("safe")) {
+                sshSender!!.sendText(FSPSendMode.sendCommandStatic(FSPSendMode.FSP_SAFE))
+            } else if ( mode.equals("force")) {
+                sshSender!!.sendText(FSPSendMode.sendCommandStatic(FSPSendMode.FSP_FORCE))
+            }
             sshSender!!.sendText(FSPSendStatBytes.sendCommand(walkerState.totalBytes))
             sshSender!!.sendText(FSPSendStatFiles.sendCommand(walkerState.totalFiles))
 

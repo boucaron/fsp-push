@@ -126,9 +126,9 @@ class MainActivity : ComponentActivity() {
                         selectedUri = selectedUri,
                         walkerState = walkerState,
                         onWalkerStateChange = { updated -> walkerState = updated },
-                        onScanDirectory = { uri, dryRun, sshConfig, onProgress ->
-                            val scanner = DirectoryScanner(this, walkerState, sshConfig)
-                            scanner.scan(uri, dryRun, onProgress)
+                        onScanDirectory = { uri, dryRun, sshConfig, targetDirectory, mode, onProgress ->
+                            val scanner = DirectoryScanner(this, walkerState, sshConfig, targetDirectory, mode)
+                            scanner.scan(uri, dryRun, targetDirectory, mode, onProgress)
                         },
                         context = this
                     )
@@ -144,7 +144,7 @@ fun MainScreen(
     selectedUri: Uri?,
     walkerState: FSPWalkerState,
     onWalkerStateChange: (FSPWalkerState) -> Unit,
-    onScanDirectory: suspend (Uri, Boolean, SshConfig?, (walkerState: FSPWalkerState) -> Unit) -> Unit,
+    onScanDirectory: suspend (Uri, Boolean, SshConfig?, String, String, (walkerState: FSPWalkerState) -> Unit) -> Unit,
     context: ComponentActivity
 ) {
     val scope = rememberCoroutineScope()
@@ -175,6 +175,7 @@ fun MainScreen(
     var passwordVisible by remember { mutableStateOf(false) }
     var targetDirectory by remember { mutableStateOf("") }
     var throughputText by remember { mutableStateOf("") }
+    var mode by remember { mutableStateOf("append") }
 
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -194,6 +195,7 @@ fun MainScreen(
         sshUser = snapshot.username ?: ""
         targetDirectory = snapshot.targetDirectory ?: ""
         throughputText = snapshot.simulationThroughput ?: "10.0"
+        mode = snapshot.mode ?: "append"
     }
 
     Scaffold(
@@ -235,7 +237,7 @@ fun MainScreen(
                                     throughputText.toDouble()
                                 startTime = System.currentTimeMillis()
 
-                                onScanDirectory(selectedUri, dry_run, null) { updatedState ->
+                                onScanDirectory(selectedUri, dry_run, null, targetDirectory, mode) { updatedState ->
                                     walkerStateLocal = updatedState
                                     onWalkerStateChange(updatedState)
                                 }
@@ -330,7 +332,9 @@ fun MainScreen(
                                         onScanDirectory(
                                             selectedUri,
                                             dry_run,
-                                            sshConfig
+                                            sshConfig,
+                                            targetDirectory,
+                                            mode
                                         ) { updatedState ->
                                             walkerStateLocal = updatedState
                                             onWalkerStateChange(updatedState)
@@ -464,6 +468,7 @@ fun MainScreen(
                                 username = sshUser,
                                 targetDirectory = targetDirectory,
                                 simulationThroughput = throughputText,
+                                mode = mode
                             )
                             sshStatus = "Settings saved!"
                         }
@@ -476,6 +481,7 @@ fun MainScreen(
                             sshUser = snapshot.username ?: ""
                             targetDirectory = snapshot.targetDirectory ?: ""
                             throughputText = snapshot.simulationThroughput ?: ""
+                            mode = snapshot.mode ?: ""
                             sshStatus = "Settings loaded!"
                         }
                     }) { Text("Load Settings") }
@@ -487,6 +493,49 @@ fun MainScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             Accordion(title = "Misc Settings") {
+
+                var expanded by remember { mutableStateOf(false) }
+
+                val modeOptions = listOf(
+                    "Append" to "append",
+                    "Safe" to "safe",
+                    "Force" to "force"
+                )
+
+                ExposedDropdownMenuBox(
+                    expanded = expanded,
+                    onExpandedChange = { expanded = !expanded }
+                ) {
+
+                    OutlinedTextField(
+                        value = modeOptions.first { it.second == mode }.first,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Transfer Mode") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                        modifier = Modifier
+                            .menuAnchor()
+                            .fillMaxWidth()
+                    )
+
+                    ExposedDropdownMenu(
+                        expanded = expanded,
+                        onDismissRequest = { expanded = false }
+                    ) {
+
+                        modeOptions.forEach { (label, value) ->
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                onClick = {
+                                    mode = value
+                                    expanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
 
                 OutlinedTextField(
                     value = throughputText,
