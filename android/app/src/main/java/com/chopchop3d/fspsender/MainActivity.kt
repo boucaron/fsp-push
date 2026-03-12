@@ -18,11 +18,14 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
@@ -30,7 +33,9 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import com.chopchop3d.fspsender.dfs.*
 import com.chopchop3d.fspsender.dfs.FSPWalkerState.Companion.FILE_BUF_SIZE
 import com.chopchop3d.fspsender.dfs.FSPWalkerState.Companion.FSP_MAX_FILE_LIST_BYTES
@@ -38,16 +43,27 @@ import com.chopchop3d.fspsender.dfs.FSPWalkerState.Companion.FSP_MAX_FILES_PER_L
 import com.chopchop3d.fspsender.dfs.FSPWalkerState.Companion.FSP_MAX_WALK_DEPTH
 import com.chopchop3d.fspsender.ui.theme.FSPSenderTheme
 import com.chopchop3d.fspsender.ui.theme.ZenburnButton
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.Instant
 
 
+import androidx.compose.animation.core.*
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.ui.Alignment
-import androidx.compose.animation.core.*
-import androidx.compose.ui.graphics.graphicsLayer
-import kotlinx.coroutines.delay
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.OutlinedButton
+
+import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.layout.ContentScale
+
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
+
 
 enum class TransferState {
     IDLE,
@@ -121,7 +137,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
-
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
 fun MainScreen(
@@ -137,7 +152,7 @@ fun MainScreen(
     var transferState by remember { mutableStateOf(TransferState.IDLE) }
     val snackbarHostState = remember { SnackbarHostState() }
     var dry_run by remember { mutableStateOf(true) }
-    var dry_run_executed by remember {  mutableStateOf(false) }
+    var dry_run_executed by remember { mutableStateOf(false) }
 
     var walkerStateLocal by remember { mutableStateOf(walkerState) }
 
@@ -170,7 +185,7 @@ fun MainScreen(
     var fspRecvExists by remember { mutableStateOf(false) }
 
     val scrollState = rememberScrollState()
-
+    var showAboutDialog by remember { mutableStateOf(false) }
 
     // Load saved SSH settings once at start
     LaunchedEffect(Unit) {
@@ -190,6 +205,7 @@ fun MainScreen(
                 .fillMaxSize()
                 .verticalScroll(scrollState)
                 .padding(16.dp)
+                .padding(padding)  // respect insets from Scaffold / edge-to-edge
         ) {
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -216,7 +232,7 @@ fun MainScreen(
                                 walkerStateLocal.totalBytes = 0
                                 walkerStateLocal.totalFiles = 0
                                 walkerStateLocal.dryRun.simulationThroughput =
-                                    throughputText.toDouble();
+                                    throughputText.toDouble()
                                 startTime = System.currentTimeMillis()
 
                                 onScanDirectory(selectedUri, dry_run, null) { updatedState ->
@@ -254,7 +270,6 @@ fun MainScreen(
                                         Log.e("FSP", "No network available, aborting SSH")
                                         transferState = TransferState.ERROR
                                         statusMessage = "No network available ! Aborting !"
-                                        transferState = TransferState.ERROR
                                         scope.launch {
                                             snackbarHostState.showSnackbar("Transfer failed: no network")
                                         }
@@ -466,8 +481,6 @@ fun MainScreen(
                     }) { Text("Load Settings") }
                 }
 
-
-
                 Text(sshStatus)
             }
 
@@ -489,10 +502,8 @@ fun MainScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Text("Status: $statusMessage")
             StatusBanner(transferState, statusMessage)
             Spacer(modifier = Modifier.height(8.dp))
-
 
             LaunchedEffect(triggerDisplay) {
                 displayTotalSize = FSPDryRunStats.formatSize(walkerState.totalBytes)
@@ -507,11 +518,6 @@ fun MainScreen(
             Spacer(modifier = Modifier.height(8.dp))
             Text("Simulated time: $displaySimulatedTime")
             Text("Dry-Run Elapsed time: ${dryRunElapsedTime / 1000}.${(dryRunElapsedTime % 1000) / 10} s")
-
-
-
-            /*
-        Text("Progress: ${walkerState.stderrServer}") */
 
             val showProgress = !dry_run && ((walkerState.stderrServer.contains("Receiv") &&
                     walkerState.stderrServer.isNotBlank()) ||
@@ -532,7 +538,6 @@ fun MainScreen(
                             val sec = runElapsedTime.toDouble() / 1000
                             val speedBytes = transferredBytes.toDouble() / sec
 
-                            // Format dynamically
                             when {
                                 speedBytes >= 1024.0 * 1024 * 1024 -> String.format("%.2f GB/s", speedBytes / (1024.0 * 1024 * 1024))
                                 speedBytes >= 1024.0 * 1024 -> String.format("%.2f MB/s", speedBytes / (1024.0 * 1024))
@@ -544,9 +549,137 @@ fun MainScreen(
                 )
             }
 
+            // ────────────────────────────────────────────────
+            // Bottom attribution row – compact
+            // ────────────────────────────────────────────────
+            Spacer(modifier = Modifier.weight(1f))
+
+            HorizontalDivider(
+                thickness = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+
+                Image(
+                    painter = painterResource(R.drawable.abouticon),
+                    contentDescription = "About",
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clickable { showAboutDialog = true },
+                    contentScale = ContentScale.Fit
+                )
+
+                Spacer(modifier = Modifier.width(6.dp))
+
+                Text(
+                    text = "© ${java.time.Year.now().value} Julien BOUCARON",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Text(
+                    text = "GitHub",
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Medium
+                    ),
+                    modifier = Modifier.clickable {
+                        val intent = Intent(
+                            Intent.ACTION_VIEW,
+                            Uri.parse("https://github.com/boucaron/fsp-push")
+                        )
+                        context.startActivity(intent)
+                    }
+                )
+            }
+            // No extra Spacer at the very bottom — padding(vertical = 6.dp) above is enough
+        }
+
+        // ────────────────────────────────────────────────
+        // About dialog (inside Scaffold content → correct scope)
+        // ────────────────────────────────────────────────
+        if (showAboutDialog) {
+            Dialog(onDismissRequest = { showAboutDialog = false }) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth(0.9f)
+                        .wrapContentHeight(),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Image(
+                            painter = painterResource(id = R.drawable.abouticon),
+                            contentDescription = "FSP Sender icon",
+                            modifier = Modifier
+                                .size(240.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                    CircleShape
+                                )
+                                .padding(8.dp),
+                            contentScale = ContentScale.Fit
+                        )
+
+                        Text(
+                            text = "FSP Sender",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        Text(
+                            text = "© ${java.time.Year.now().value} Julien BOUCARON",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+
+                        Text(
+                            text = "Open-source tool for sending directories via FSP over SSH",
+                            style = MaterialTheme.typography.bodyMedium,
+                            textAlign = TextAlign.Center
+                        )
+
+                        Button(
+                            onClick = {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/boucaron/fsp-push"))
+                                context.startActivity(intent)
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary
+                            )
+                        ) {
+                            Text("View on GitHub")
+                        }
+
+                        Text(
+                            text = "Licensed under MIT",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        OutlinedButton(onClick = { showAboutDialog = false }) {
+                            Text("Close")
+                        }
+                    }
+                }
+            }
         }
     }
 }
+
+
 @Composable
 fun ProgressDisplay(
     stderrServer: String,
