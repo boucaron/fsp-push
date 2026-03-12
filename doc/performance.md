@@ -1,19 +1,16 @@
 # Performance Characteristics
 
-FSP is designed to maximize throughput when transferring large directory
-snapshots containing a mixture of small and large files.
+FSP is designed to maximize throughput when transferring large directory snapshots containing a mixture of small and large files.
 
-Traditional file transfer tools often suffer performance degradation when
-handling many small files or operating over moderate latency connections.
+Traditional file transfer tools often suffer severe performance degradation with many small files or moderate-latency connections.
 
-FSP avoids these limitations by using a **single forward streaming model**.
+FSP avoids these limitations through a **single forward streaming model**.
 
 ---
 
 ## Latency and Request Cycles
 
-Many file transfer protocols rely on application-level request/response
-cycles.
+Many file transfer protocols rely on application-level request/response cycles.
 
 Typical workflow:
 
@@ -21,30 +18,29 @@ Typical workflow:
 2. Wait for receiver acknowledgment
 3. Send file data
 
-Each file may require one or more round trips before the transfer begins.
+Each file may require one or more round trips before data flow begins.
 
 With moderate latency this becomes expensive.
 
-Example:
+Example overhead (pure waiting time, before any data moves):
 
-| Files | RTT | Overhead |
-|------|-----|----------|
-| 10 | 20 ms | ~0.2 s |
-| 1000 | 20 ms | ~20 s |
-| 1000 | 100 ms | ~100 s |
+| Number of files | RTT    | Overhead (pure round-trip time) |
+|-----------------|--------|---------------------------------|
+| 10              | 20 ms  | ~0.2 seconds                    |
+| 1,000           | 20 ms  | ~20 seconds                     |
+| 1,000           | 100 ms | ~100 seconds (1.7 minutes)      |
 
-For workloads such as photo libraries or source trees this overhead
-can dominate total transfer time.
+For workloads such as photo libraries, music collections, or source trees, this overhead often dominates total transfer time.
 
 ---
 
 ## Streaming Throughput
 
-FSP eliminates application-level acknowledgments.
+FSP eliminates application-level acknowledgments entirely.
 
 Instead:
 
-- files are streamed continuously
+- files are streamed continuously in sequence
 - the receiver processes frames as they arrive
 - integrity verification occurs inline
 
@@ -54,20 +50,19 @@ The underlying transport handles:
 - congestion control
 - flow control
 
-This allows the data pipe to remain continuously utilized.
+This keeps the data pipe continuously utilized, maximizing throughput even on moderate-latency paths.
 
 ---
 
 ## Mixed Workloads
 
-FSP performs well when transferring:
+FSP performs well across:
 
-- large media files
-- many small files
+- large media files (videos, RAW photos)
+- many small files (thumbnails, MP3s, documents)
 - mixed datasets
 
-Because files are streamed sequentially without negotiation overhead,
-small files do not incur additional round-trip penalties.
+Because there is no per-file negotiation or acknowledgment overhead, small files do not incur additional round-trip penalties.
 
 ---
 
@@ -78,27 +73,26 @@ FSP does not implement compression internally.
 Compression can be added transparently using standard tools.
 
 Example:
-```bash
-fsp-send /data | zstd | ssh host "zstd -d | fsp-recv /dest"
-```
 
+    fsp-send /data | zstd | ssh host "zstd -d | fsp-recv /dest"
 
-This allows flexible trade-offs between CPU usage and network bandwidth.
+This allows users to trade CPU usage for reduced network bandwidth as needed.
 
 ---
 
 ## Large File Handling
 
-Files larger than **128 MiB** are chunked.
+Files larger than **128 MiB** are split into fixed 128 MiB chunks.
 
 Benefits:
 
 - earlier corruption detection
-- reduced wasted transfer time
-- better progress visibility
+- reduced wasted transfer time on large corrupted files
+- better progress visibility during very long transfers
 
-Chunking does not affect the streaming model and remains transparent to
-the user.
+Small files are sent as a single chunk (no splitting).
+
+Chunking is transparent to the user and does not affect the streaming model.
 
 ---
 
@@ -106,17 +100,22 @@ the user.
 
 Performance depends primarily on:
 
-- storage speed
-- CPU hashing speed
-- network bandwidth
-- transport configuration
+- storage read/write speed
+- CPU hashing speed (SHA-256)
+- network bandwidth and latency
+- transport configuration (e.g. TCP window size, SSH buffers)
 
 Typical bottlenecks include:
 
-- slow spinning disks
-- small TCP buffers
-- Wi-Fi interference
-- encrypted transports on low-power devices
+- slow spinning disks or microSD cards
+- small TCP buffers on high-latency links
+- Wi-Fi interference or weak signal
+- encrypted transports on low-power devices (e.g. Android phones)
+- Android SAF per-operation overhead on small-file heavy workloads
 
-FSP generally achieves near-line-rate throughput when these components
-are not limiting factors.
+FSP generally achieves near-line-rate throughput when these components are not limiting factors.
+
+On budget Android devices over Wi-Fi + SSH, observed averages are:
+
+- large media files: ~8–10 MB/s
+- small-file heavy: ~2.5–3 MB/s

@@ -2,93 +2,84 @@
 
 FSP is transport-agnostic and can operate over any reliable byte stream.
 
-Common transports include SSH, raw TCP, and TLS.
+Common transports include SSH (most popular), raw TCP (LAN/trusted), and TLS (custom encrypted).
 
 ---
 
-## SSH
+## SSH (Recommended for most users)
 
 SSH is the most common deployment method.
 
 Example:
-```bash
-fsp-send /data | ssh user@host fsp-recv /dest
-```
 
+    fsp-send /data | ssh user@host fsp-recv /dest
 
 Advantages:
 
-- encryption
-- authentication
-- firewall friendliness
-- widely available
+- Built-in encryption and authentication
+- Firewall-friendly (port 22 usually open)
+- Widely available on servers/NAS
+- stderr progress from receiver visible in real time
 
 ---
 
-## TCP
+## Raw TCP (LAN / trusted networks only)
 
-Raw TCP can be used in controlled environments.
+Raw TCP avoids SSH overhead for maximum throughput in controlled environments.
 
-Receiver:
-```bash
-socat TCP-LISTEN:9000,reuseaddr EXEC:"fsp-recv /dest"
-```
+Receiver (listening):
+
+    socat TCP-LISTEN:9000,reuseaddr EXEC:fsp-recv /dest
 
 Sender:
-```bash
-fsp-send /data | socat STDIN TCP:host:9000
-```
 
+    fsp-send /data | socat STDIN TCP:host:9000
 
-This avoids SSH overhead and can provide higher throughput on trusted
-networks.
+**Security note:** No encryption or authentication — use only on trusted networks.
 
 ---
 
-## TLS
+## TLS (encrypted without SSH)
 
-Encrypted connections can also be established using TLS tools.
+TLS can be used with tools like ncat or openssl s_client.
 
 Example:
-```bash
-fsp-send /data | ncat --ssl host 9000
-```
 
+    fsp-send /data | ncat --ssl host 9000
 
-TLS may be useful when integrating FSP into custom systems or services.
+Useful when integrating FSP into custom services or when SSH is not desired.
 
----
-
-## Compression
-
-External compression tools can be inserted into the stream.
-
-Example:
-```bash
-fsp-send /data | zstd | ssh host "zstd -d | fsp-recv /dest"
-```
-
-
-Because FSP is a pure byte stream, compression tools operate seamlessly.
+**Note:** Authentication and certificate handling must be managed separately.
 
 ---
 
-## High Latency Networks
+## Compression (transparent pipe)
 
-High bandwidth-delay product (BDP) links benefit from increased buffer
-sizes.
+FSP does not compress internally — use standard tools in the pipeline.
+
+Example with zstd:
+
+    fsp-send /data | zstd | ssh host "zstd -d | fsp-recv /dest"
+
+This allows flexible CPU vs bandwidth trade-offs.
+
+---
+
+## High-Latency Networks (WAN, satellite, VPN)
+
+High bandwidth-delay product (BDP) links require large TCP buffers to maintain throughput.
 
 Approximate examples:
 
-| Bandwidth | RTT | Recommended Buffer |
-|----------|-----|-------------------|
-| 1 Gbps | 100 ms | ~12.5 MiB |
-| 1 Gbps | 500 ms | ~62.5 MiB |
+| Bandwidth | RTT     | Recommended Buffer Size |
+|-----------|---------|--------------------------|
+| 1 Gbps    | 100 ms  | ~12.5 MiB                |
+| 1 Gbps    | 500 ms  | ~62.5 MiB                |
 
-These buffers can be configured using:
+Tuning methods:
 
-- `socat` socket options
-- system TCP settings
-- HPN-SSH
+- socat sndbuf / rcvbuf options
+- Linux sysctl (net.ipv4.tcp_wmem, net.core.wmem_max, etc.)
+- HPN-SSH patches for larger internal SSH buffers
 
-Proper tuning helps maintain full throughput on long-distance links.
+Without proper tuning, throughput can drop significantly on long-distance links.

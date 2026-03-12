@@ -12,12 +12,12 @@ It transfers directories as a single forward stream with per-file SHA-256 integr
 
 # Features
 
-* **High throughput** — continuous forward stream without request/response cycles
-* **Strong integrity** — SHA-256 verification per file and per large-file chunk
-* **Fail-fast behavior** — transfers stop immediately on corruption or write errors
-* **Transport-agnostic** — works over SSH, TCP, TLS, or local pipes
-* **Atomic commits** — files are only finalized after successful verification
-* **Minimal scope** — transfers only files and directories for predictable behavior
+* High throughput — continuous forward stream without request/response cycles
+* Strong integrity — SHA-256 per file and per 128 MiB chunk
+* Fail-fast behavior — transfers stop immediately on corruption or write errors
+* Transport-agnostic — works over SSH, TCP, TLS, or local pipes
+* Atomic commits — files are only finalized after successful verification
+* Minimal scope — transfers only files and directories for predictable behavior
 
 FSP is designed for fast snapshot transfers rather than full filesystem replication.
 
@@ -27,27 +27,23 @@ FSP is designed for fast snapshot transfers rather than full filesystem replicat
 
 Send a directory to a remote machine over SSH:
 
-```
-fsp-send /data | ssh user@host fsp-recv /dest
-```
+    fsp-send /data | ssh user@host fsp-recv /dest
+
+Dry-run to check size & estimate time first:
+
+    fsp-send --dry-run /data
 
 Create a streaming archive:
 
-```
-fsp-send /data > snapshot.fsp
-```
+    fsp-send /data > snapshot.fsp
 
 Restore from archive:
 
-```
-fsp-recv /restore < snapshot.fsp
-```
+    fsp-recv /restore < snapshot.fsp
 
-Compression can be added transparently:
+With compression:
 
-```
-fsp-send /data | zstd | ssh host "zstd -d | fsp-recv /dest"
-```
+    fsp-send /data | zstd | ssh host "zstd -d | fsp-recv /dest"
 
 Because FSP is a pure byte stream, it integrates easily with standard Unix tools.
 
@@ -55,49 +51,41 @@ Because FSP is a pure byte stream, it integrates easily with standard Unix tools
 
 # Architecture
 
-```
-┌──────────────┐
-│ Source files │
-└──────┬───────┘
-       │
-       ▼
-   fsp-send
-       │
-       │  streaming protocol
-       │  (SSH / TCP / TLS)
-       ▼
-   fsp-recv
-       │
-       ▼
-┌───────────────┐
-│ Destination   │
-│ filesystem    │
-└───────────────┘
-```
+    ┌──────────────┐
+    │ Source files │
+    └──────┬───────┘
+           │
+           ▼
+       fsp-send
+           │
+           │  streaming protocol
+           │  (SSH / TCP / TLS)
+           ▼
+       fsp-recv
+           │
+           ▼
+    ┌───────────────┐
+    │ Destination   │
+    │ filesystem    │
+    └───────────────┘
 
 The sender walks the source directory and streams files sequentially.
-The receiver reconstructs the filesystem structure and verifies file
-integrity before committing each file.
+The receiver reconstructs the structure and verifies integrity before committing each file.
 
 ---
 
 # Predictable Performance
 
-FSP uses a **single forward streaming model** with no application-level
-request/acknowledgment cycles.
+FSP uses a single forward streaming model with no application-level request/acknowledgment cycles.
 
-Because the entire snapshot is transmitted as one continuous stream,
-performance is largely independent of file count.
-
-Throughput is typically limited only by:
+Performance is largely independent of file count — throughput is limited mainly by:
 
 * storage speed
-* CPU hashing performance
+* CPU hashing (SHA-256)
 * network bandwidth
-* transport overhead (for example SSH encryption)
+* transport overhead (e.g. SSH encryption)
 
-This design allows FSP to maintain consistent performance across
-mixed workloads containing both large files and many small files.
+This makes FSP excel on mixed workloads (many small files + huge blobs).
 
 ---
 
@@ -105,49 +93,38 @@ mixed workloads containing both large files and many small files.
 
 Sender:
 
-```
-fsp-send [options] <source-directory>
-```
+    fsp-send [options] <source-directory>
 
 Receiver:
 
-```
-fsp-recv [options] <destination-directory>
-```
+    fsp-recv [options] <destination-directory>
 
-Transfer modes:
+Transfer modes (--mode MODE):
 
-```
---mode append   create missing files only (default)
---mode safe     skip identical files, abort on mismatch
---mode force    overwrite existing files
-```
+    append   create missing files only (default)
+    safe     skip identical files, abort on SHA-256 mismatch
+    force    overwrite existing files
 
 Other options:
 
-```
---dry-run       scan files and estimate transfer size  
---version       show version information
-```
+    --dry-run       scan files and estimate transfer size/time
+    --throughput    simulated throughput in MB/s for dry-run ETA
+    --version       show version information
 
 ---
 
 # Guarantees
 
-FSP provides the following guarantees:
-
-* **Ordered reconstruction** of files and directories
-* **Per-file SHA-256 integrity verification**
-* **Atomic file commits** (no partial files left behind)
-* **Fail-fast transfers** on corruption or write errors
+* Ordered reconstruction of files and directories
+* Per-file SHA-256 integrity verification
+* Atomic file commits (no partial files left behind)
+* Fail-fast transfers on corruption or write errors
 
 Interrupted transfers are **not resumable** and must be restarted.
 
 ---
 
 # Scope
-
-FSP intentionally supports a minimal filesystem model.
 
 Supported:
 
@@ -163,8 +140,7 @@ Not supported:
 * delta synchronization
 * resumable transfers
 
-This simplified scope allows the protocol to remain deterministic,
-portable, and easy to reason about.
+This minimal scope keeps the protocol deterministic, portable, and easy to reason about.
 
 ---
 
@@ -176,33 +152,33 @@ Common examples:
 
 SSH:
 
-```
-fsp-send /data | ssh user@host fsp-recv /dest
-```
+    fsp-send /data | ssh user@host fsp-recv /dest
 
 Raw TCP:
 
-```
-fsp-send /data | socat STDIN TCP:host:9000
-```
+    fsp-send /data | socat STDIN TCP:host:9000
 
 TLS:
 
-```
-fsp-send /data | ncat --ssl host 9000
-```
+    fsp-send /data | ncat --ssl host 9000
 
-More transport details are available in the documentation.
+More details in the documentation.
 
 ---
 
 # Android Sender
 
-An Android sender application is available for streaming phone data to
-remote systems over SSH.
+A pure-Kotlin Android app is available for streaming phone data over SSH.
 
-The application is written in pure Kotlin and uses the Android Storage
-Access Framework for safe filesystem access.
+Uses Storage Access Framework (SAF) for safe access.
+
+Real-world performance (budget phones, Wi-Fi + SSH):
+
+* Photos/videos: ~8–10 MB/s
+* Small files (e.g. MP3 libraries): ~2.5–3 MB/s
+* Example: ~20 GB transfer in ~40 minutes
+
+Reliable "set and forget" — no mid-transfer interruptions observed.
 
 See **docs/android.md** for details.
 
@@ -210,14 +186,12 @@ See **docs/android.md** for details.
 
 # Documentation
 
-Additional documentation is available in the `docs` directory:
+Additional docs in the `docs` directory:
 
-```
-docs/design.md
-docs/performance.md
-docs/transports.md
-docs/android.md
-```
+    docs/design.md
+    docs/performance.md
+    docs/transports.md
+    docs/android.md
 
 ---
 
@@ -230,12 +204,14 @@ Requirements:
 
 Typical build:
 
-```
-make
-```
+    make
 
 ---
 
 # License
 
-FSP is released under the **MIT License** (© 2026–present Julien Boucaron). See the LICENSE file for details.
+FSP is released under the **MIT License** (© 2026–present Julien Boucaron).  
+See the LICENSE file for details.
+
+FSP - Forward Snapshot Protocol  
+Version: 0.1
