@@ -35,21 +35,21 @@ Sender:
 
     fsp-send /data | socat STDIN TCP:host:9000
 
-**Security note:** No encryption or authentication — use only on trusted networks.
+Note: No encryption or authentication — use only on trusted networks.
 
 ---
 
 ## TLS (encrypted without SSH)
 
-TLS can be used with tools like ncat or openssl s_client.
+TLS can be used with tools like ncat.
 
 Example:
 
     fsp-send /data | ncat --ssl host 9000
 
-Useful when integrating FSP into custom services or when SSH is not desired.
+Useful for custom services or when SSH is not desired.
 
-**Note:** Authentication and certificate handling must be managed separately.
+Note: Authentication and certificate handling must be managed separately.
 
 ---
 
