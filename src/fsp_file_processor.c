@@ -1,5 +1,6 @@
 #include "fsp_file_processor.h"
 #include "fsp_progress.h"
+#include "fsp_compat.h"
 
 #include <stdlib.h>
 #include <string.h>
