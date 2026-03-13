@@ -181,6 +181,11 @@ fsp_print_time (double seconds, char *buf, size_t buflen)
 }
 
 
+#define BAR_WIDTH 40
+#define LABEL_WIDTH 10
+#define INFO_WIDTH 23 // count + " files " + percentage fixed
+
+
 static void
 fsp_dry_run_report(fsp_dry_run_stats *s, char* custom)
 {
@@ -224,10 +229,6 @@ fsp_dry_run_report(fsp_dry_run_stats *s, char* custom)
             "> 100 GB"
     };
 
-    const int BAR_WIDTH = 40;
-
-    const int LABEL_WIDTH = 10;
-    const int INFO_WIDTH  = 23; // count + " files " + percentage fixed
 
     for (size_t i = 0; i < FS_SIZE_BUCKETS; i++) {
         double pct = s->file_count
