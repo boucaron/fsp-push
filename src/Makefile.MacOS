@@ -2,7 +2,7 @@ INCLUDES = -I/opt/homebrew/include
 LIBS = -L/opt/homebrew/lib
 
 CC ?= cc
-CFLAGS ?= -O2 -Wall -Wextra -I../include $(INCLUDES) 
+CFLAGS ?= -O2 -Wall -Wextra -Wformat-security -std=gnu11   -I../include $(INCLUDES) 
 # CFLAGS ?= -g -Wall -Wextra -I../include 
 
 BIN_SEND = fsp-send
