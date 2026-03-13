@@ -77,6 +77,7 @@ int main(int argc, char **argv) {
     int dry_run = 0;  
     double throughput = 50.0;
     int opt;
+    char *endptr = NULL;
     while ((opt = getopt_long(argc, argv, "m:d:t", long_opts, NULL)) != -1) {
         switch (opt) {
         case 'm':
@@ -96,7 +97,7 @@ int main(int argc, char **argv) {
             return 0;
 
         case 't':
-            char *endptr = NULL;
+	    endptr = NULL;
             errno = 0;
 
             throughput = strtod(optarg, &endptr);
