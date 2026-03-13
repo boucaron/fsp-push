@@ -404,8 +404,8 @@ static int fsp_rx_handle_file_metadata(fsp_receiver_state_t *rx, FILE *fp) {
 
         // DEBUG
         if (  rx->verbose == 1 ) {
-            fprintf(stderr, "fsp_rx_handle_file_metadata - Received file: %s (%lu bytes, %lu chunks)\n", 
-                entry->name, entry->size, entry->num_chunks);
+            fprintf(stderr, "fsp_rx_handle_file_metadata - Received file: %s (%llu bytes, %llu chunks)\n", 
+		    entry->name, (uint64_t)entry->size, (uint64_t)entry->num_chunks);
         }
     }
 
@@ -717,7 +717,7 @@ static int fsp_rx_handle_file_hashes_safe_small_file(
     const char *existingFilePath,
     struct stat *st)
 {
-    if (st->st_size != entry->size)
+  if ((uint64_t)st->st_size != entry->size)
         return -1;
 
     EVP_MD_CTX *file_ctx = EVP_MD_CTX_new();
@@ -788,7 +788,7 @@ static int fsp_rx_handle_file_hashes_safe_chunked_file(
         const char *existingFilePath,
         struct stat *st)
 {
-    if (st->st_size != entry->size)
+  if ((uint64_t)st->st_size != entry->size)
         return -1;
 
     int ret = -1;
@@ -967,7 +967,7 @@ static int fsp_rx_handle_file_hashes(fsp_receiver_state_t *rx, FILE *fp) {
         }
         uint64_t size = be64toh(size_be);
         if (entry->size != size) {
-            fprintf(stderr, "fsp_rx_handle_file_hashes entry->size not matching %ld for entry %ld: %s\n", entry->size, i, entry->name);
+	  fprintf(stderr, "fsp_rx_handle_file_hashes entry->size not matching %llu for entry %ld: %s\n", (uint64_t)entry->size, i, entry->name);
             return -1;        
         }
 
@@ -1054,7 +1054,7 @@ static int fsp_rx_handle_file_hashes(fsp_receiver_state_t *rx, FILE *fp) {
             } else if ( rx->mode == FSP_SAFE ) {
                 // Fails if the hash is not the same   
                 int r;
-                if ( st.st_size > FSP_CHUNK_SIZE ) {
+                if ( (uint64_t)st.st_size > (uint64_t)FSP_CHUNK_SIZE ) {
                     r = fsp_rx_handle_file_hashes_safe_chunked_file(rx, entry, filepath, &st);                    
                 } else {
                     r = fsp_rx_handle_file_hashes_safe_small_file(rx, entry, filepath, &st);                    
@@ -1084,8 +1084,8 @@ static int fsp_rx_handle_file_hashes(fsp_receiver_state_t *rx, FILE *fp) {
 
         // DEBUG
         if (  rx->verbose == 1 ) {
-            fprintf(stderr, "fsp_rx_handle_file_hashes - Cross check OK : %s (%lu bytes, %lu chunks)\n", 
-                entry->name, entry->size, entry->num_chunks);
+            fprintf(stderr, "fsp_rx_handle_file_hashes - Cross check OK : %s (%llu bytes, %llu chunks)\n", 
+		    entry->name, (uint64_t)entry->size, (uint64_t)entry->num_chunks);
         }
        
         // Eveything is fine and cross checked        
