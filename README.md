@@ -29,6 +29,10 @@ FSP is designed for fast snapshot transfers rather than full filesystem replicat
 
 # Quick Start
 
+Check the demo below showing a dry-run and actual transfer:
+
+![FSP Transfer Demo](assets/fsp-send-demo.gif)
+
 Send a directory to a remote machine over SSH:
 
     fsp-send /data | ssh user@host fsp-recv /dest
