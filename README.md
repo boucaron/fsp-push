@@ -10,7 +10,7 @@ It transfers directories as a single forward stream with per-file SHA-256 integr
 
 **Design philosophy:** keep the protocol simple, deterministic, and optimized for single-pass snapshot streaming.
 
-*Keywords*: file transfer, snapshot streaming, backup tool, CLI file transfer, SSH file streaming
+**Keywords**: file transfer, snapshot streaming, backup tool, CLI file transfer, SSH file streaming
 
 ---
 
