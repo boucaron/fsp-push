@@ -90,10 +90,6 @@ time tar cf - /C/DEV/ARCHIVE | ssh admin@192.168.178.56 "tar xf - -C ~/tests"
    * Slow due to **per-file overhead** and **no verification**; SFTP slightly faster than SCP in this test.
 
 
-Perfect! Here’s a **revised, precise summary comment** for your Markdown document, taking into account that FSP **always computes SHA-256 on the receiver**, and clarifying why rsync can appear slightly faster on a fresh target:
-
----
-
 ## Summary Comment
 
 FSP combines **high-speed streaming**, **SHA-256 integrity verification**, **atomic writes**, and **progress reporting on both ends**, making it **safe and predictable** for both many small files and a few large files. While raw streams like tar can be faster, they provide **no verification**. SCP and SFTP are significantly slower due to per-file protocol overhead.
