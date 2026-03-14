@@ -1,4 +1,4 @@
-![FSP Logo](assets/abounticon.png)
+![FSP Logo](assets/abouticon.png)
 
 # FSP — Forward Snapshot Protocol
 
