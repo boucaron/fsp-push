@@ -45,12 +45,13 @@ Create a streaming archive:
 
     fsp-send /data > snapshot.fsp
 
- ![FSP Archive Demo](assets/fsp-send-archive.gif)   
+ ![FSP Send Archive Demo](assets/fsp-send-archive.gif)   
 
 Restore from archive:
 
     fsp-recv /restore < snapshot.fsp
 
+ ![FSP Recv Archive Demo](assets/fsp-recv-archive.gif)   
 With compression:
 
     fsp-send /data | zstd | ssh host "zstd -d | fsp-recv /dest"
