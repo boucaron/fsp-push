@@ -63,8 +63,8 @@ time tar cf - /C/DEV/ARCHIVE | ssh admin@192.168.178.56 "tar xf - -C ~/tests"
 | -------- | ----------- | --------- | --------------- | -------------------------------------------------------------------------- |
 | scp      | Source Code | 22m1.601s | 2.9 MB/s        | Per-file overhead, no integrity check, SSH only                            |
 | sftp     | Source Code | 19m2.319s | 3.2 MB/s        | Per-file overhead, no integrity check, SSH only                            |
-| rsync -c | Source Code | 52.490s   | 75.7 MB/s       | Checksum verification per file, SSH transport                              |
-| fsp      | Source Code | 54.378s   | 73.0 MB/s       | SHA-256 per file, atomic writes, dry-run + progress, transport-independent |
+| rsync -c | Source Code | 52.490s   | 75.7 MB/s       | Checksum verification per file (sender only?), SSH transport               |
+| fsp      | Source Code | 54.378s   | 73.0 MB/s       | SHA-256 per file(sender & receiver), atomic writes, dry-run + progress, transport-independent |
 | tar      | Source Code | 38.625s   | 102.8 MB/s      | Fast raw stream, transport-independent, no integrity check                 |
 | scp      | Archives    | 11.903s   | 90.7 MB/s       | Fast transfer for few large files                                          |
 | sftp     | Archives    | 12.203s   | 88.5 MB/s       | Fast transfer, SSH only                                                    |
