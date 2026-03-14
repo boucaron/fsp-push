@@ -1,7 +1,3 @@
-Absolutely! Here’s a **polished, fully updated Markdown version** of your benchmark document, with tightened notes, unified comments, and cleaned formatting for GitHub or README use:
-
----
-
 # Benchmarks
 
 ## Dataset
