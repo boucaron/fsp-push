@@ -404,8 +404,13 @@ static int fsp_rx_handle_file_metadata(fsp_receiver_state_t *rx, FILE *fp) {
 
         // DEBUG
         if (  rx->verbose == 1 ) {
+#if defined(__APPLE__) && defined(__MACH__)            
             fprintf(stderr, "fsp_rx_handle_file_metadata - Received file: %s (%llu bytes, %llu chunks)\n", 
 		    entry->name, (uint64_t)entry->size, (uint64_t)entry->num_chunks);
+#else
+            fprintf(stderr, "fsp_rx_handle_file_metadata - Received file: %s (%lu bytes, %lu chunks)\n", 
+		    entry->name, (uint64_t)entry->size, (uint64_t)entry->num_chunks);
+#endif
         }
     }
 
@@ -967,7 +972,11 @@ static int fsp_rx_handle_file_hashes(fsp_receiver_state_t *rx, FILE *fp) {
         }
         uint64_t size = be64toh(size_be);
         if (entry->size != size) {
-	  fprintf(stderr, "fsp_rx_handle_file_hashes entry->size not matching %llu for entry %ld: %s\n", (uint64_t)entry->size, i, entry->name);
+#if defined(__APPLE__) && defined(__MACH__)            
+	        fprintf(stderr, "fsp_rx_handle_file_hashes entry->size not matching %llu for entry %ld: %s\n", (uint64_t)entry->size, i, entry->name);
+#else
+            fprintf(stderr, "fsp_rx_handle_file_hashes entry->size not matching %lu for entry %ld: %s\n", (uint64_t)entry->size, i, entry->name);
+#endif
             return -1;        
         }
 
@@ -1084,8 +1093,13 @@ static int fsp_rx_handle_file_hashes(fsp_receiver_state_t *rx, FILE *fp) {
 
         // DEBUG
         if (  rx->verbose == 1 ) {
+#if defined(__APPLE__) && defined(__MACH__)                  
             fprintf(stderr, "fsp_rx_handle_file_hashes - Cross check OK : %s (%llu bytes, %llu chunks)\n", 
 		    entry->name, (uint64_t)entry->size, (uint64_t)entry->num_chunks);
+#else
+            fprintf(stderr, "fsp_rx_handle_file_hashes - Cross check OK : %s (%lu bytes, %lu chunks)\n", 
+		    entry->name, (uint64_t)entry->size, (uint64_t)entry->num_chunks);
+#endif
         }
        
         // Eveything is fine and cross checked        
