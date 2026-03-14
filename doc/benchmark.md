@@ -7,9 +7,9 @@ Absolutely! Here’s the **fully updated benchmark document in proper Markdown**
 ## Dataset
 
 * **Source Code**: Ogre3D source code, many small files, Size: 3.7 GB, File Count: 22K
-* **Archives**: new tar.gz archives from source code, few files, medium to large, Size: 1 GB, File Count: 9
+* **Archives**: new tar.gz archives from source code, few files, medium to large, Size: 1.08 GB, File Count: 9
 
-## Command Lines
+## Command Lines for Source Code
 
 ```
 time scp -r /C/DEV/ogre-14.2.6 admin@192.168.178.56:~/tests
@@ -24,6 +24,23 @@ time rsync -c -a /C/DEV/ogre-14.2.6 admin@192.168.178.56:~/tests
 time fsp-send /C/DEV/ogre-14.2.6 | ssh admin@192.168.178.56 fsp-recv ~/tests
 
 time tar cf - /C/DEV/ogre-14.2.6 | ssh admin@192.168.178.56 "tar xf - -C ~/tests"
+```
+
+## Command Lines for Archives
+
+```
+time scp -r /C/DEV/ARCHIVE admin@192.168.178.56:~/tests
+
+batch.txt:
+put -r /C/DEV/ARCHIVE tests
+quit
+time sftp -b batch.txt admin@192.168.178.56
+
+time rsync -c -a /C/DEV/ARCHIVE admin@192.168.178.56:~/tests
+
+time fsp-send /C/DEV/ARCHIVE | ssh admin@192.168.178.56 fsp-recv ~/tests
+
+time tar cf - /C/DEV/ARCHIVE | ssh admin@192.168.178.56 "tar xf - -C ~/tests"
 ```
 
 ## LAN Setup
