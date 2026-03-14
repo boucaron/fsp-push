@@ -45,6 +45,8 @@ Create a streaming archive:
 
     fsp-send /data > snapshot.fsp
 
+    ![FSP Archive Demo](assets/fsp-send-archive.gif)
+
 Restore from archive:
 
     fsp-recv /restore < snapshot.fsp
