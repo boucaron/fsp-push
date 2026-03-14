@@ -103,3 +103,95 @@ Perfect! Here’s a **revised, precise summary comment** for your Markdown docum
 FSP combines **high-speed streaming**, **SHA-256 integrity verification**, **atomic writes**, and **progress reporting on both ends**, making it **safe and predictable** for both many small files and a few large files. While raw streams like tar can be faster, they provide **no verification**. SCP and SFTP are significantly slower due to per-file protocol overhead.
 
 Rsync with `--checksum` ensures integrity using a lighter MD5 checksum, which is faster to compute than SHA-256. In benchmarks to a fresh target folder, rsync only reads the source files once, so it can appear slightly faster than FSP. FSP, however, computes **SHA-256 on the receiver as well**, providing **stronger integrity guarantees** and writing files atomically, ensuring that partially transferred files never appear at the destination.
+
+
+## 100 ms Latency / WAN-Style Benchmark (DRAFT)
+
+### Setup
+
+* Linux host as receiver
+* Simulated **100 ms network latency** with `tc qdisc` on Linux
+* LAN bandwidth: 1 Gbps, no jumbo frames
+* Target folder cleaned before each run → benchmarks measure **raw file transfer under latency**, not synchronization
+
+---
+
+### Command Lines for Source Code (100 ms Latency)
+
+NB: I did not do the sftp because it is very similar to scp
+
+```bash
+# Simulate 100ms latency on Linux receiver
+# sudo tc qdisc add dev eth0 root netem delay 100ms
+
+time scp -r /C/DEV/ogre-14.2.6 user@linux-host:~/tests
+
+time rsync -c -a /C/DEV/ogre-14.2.6 user@linux-host:~/tests
+
+time fsp-send /C/DEV/ogre-14.2.6 | ssh user@linux-host fsp-recv ~/tests
+
+time tar cf - /C/DEV/ogre-14.2.6 | ssh user@linux-host "tar xf - -C ~/tests"
+```
+
+---
+
+### Command Lines for Archives (100 ms Latency)
+
+```bash
+# Simulate 100ms latency on Linux receiver
+# sudo tc qdisc add dev eth0 root netem delay 100ms
+
+time scp -r /C/DEV/ARCHIVE user@linux-host:~/tests
+
+batch.txt:
+put -r /C/DEV/ARCHIVE tests
+quit
+time sftp -b batch.txt user@linux-host
+
+time rsync -c -a /C/DEV/ARCHIVE user@linux-host:~/tests
+
+time fsp-send /C/DEV/ARCHIVE | ssh user@linux-host fsp-recv ~/tests
+
+time tar cf - /C/DEV/ARCHIVE | ssh user@linux-host "tar xf - -C ~/tests"
+```
+
+---
+
+### Benchmark Results (100 ms Latency)
+
+| Tool     | Dataset     | Time | Mean Throughput | Comment                                                                    |
+| -------- | ----------- | ---- | --------------- | -------------------------------------------------------------------------- |
+| scp      | Source Code |      |                 | Per-file overhead, latency-sensitive                                       |
+| rsync -c | Source Code |      |                 | Checksum verification per file, latency may affect many small files        |
+| fsp      | Source Code |      |                 | SHA-256 per file, atomic writes, dry-run + progress, transport-independent |
+| tar      | Source Code |      |                 | Fast raw stream, latency-resilient, no integrity check                     |
+| scp      | Archives    |      |                 | Fast transfer for few large files                                          |
+| rsync -c | Archives    |      |                 | Checksum verification per file                                             |
+| fsp      | Archives    |      |                 | SHA-256 per file, atomic writes, dry-run + progress, transport-independent |
+| tar      | Archives    |      |                 | Fast raw stream, latency-resilient, no integrity check                     |
+
+---
+
+### Notes (100 ms Latency)
+
+1. **Per-file protocols (SCP/SFTP)**
+
+   * Expect significant slowdown due to latency per file, especially for many small files.
+
+2. **Streaming protocols (FSP/Tar)**
+
+   * Latency is amortized over the stream, so throughput is less affected.
+   * FSP still computes SHA-256 on the receiver and writes atomically.
+
+3. **Rsync `--checksum`**
+
+   * Lighter MD5 checksum, faster than SHA-256.
+   * Many small files → latency per file may reduce throughput; few large files → less impact.
+
+---
+
+### Summary Comment (100 ms Latency)
+
+FSP remains **safe and predictable under higher-latency networks**, combining streaming, SHA-256 verification, atomic writes, and progress reporting. Per-file protocols degrade more due to the added round-trip time. Rsync may appear slightly faster on fresh large files (MD5 vs SHA-256), but FSP provides **stronger integrity guarantees** and atomic writes, ensuring partial transfers never leave inconsistent files on the receiver.
+
+
