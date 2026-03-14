@@ -1,3 +1,5 @@
+![FSP Logo](assets/abounticon.png)
+
 # FSP — Forward Snapshot Protocol
 
 **FSP** is a fast, push-only protocol for streaming filesystem snapshots over any reliable byte stream.
