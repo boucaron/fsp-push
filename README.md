@@ -181,11 +181,13 @@ More details in the documentation.
 
 A pure-Kotlin Android app is available for streaming phone data over SSH.
 
+![Android Send Photo Demo](assets/android_demo_smaller.gif)  
+
 Uses Storage Access Framework (SAF) for safe access.
 
 Real-world performance (budget phones, Wi-Fi + SSH):
 
-* Photos/videos: ~8–10 MB/s
+* Photos/videos: ~5–10 MB/s
 * Small files (e.g. MP3 libraries): ~2.5–3 MB/s
 * Example: ~20 GB transfer in ~40 minutes
 
