@@ -108,26 +108,23 @@ Rsync with `--checksum` ensures integrity using a lighter MD5 checksum, which is
 
 ---
 
-### Command Lines for Source Code (100 ms Latency)
-
-NB: I did not do the sftp because it is very similar to scp
+Set Latency and enough packets
 
 ```bash
-# Simulate 100ms latency on Linux receiver
-# sudo tc qdisc add dev eth0 root netem delay 100ms
-
-time scp -r /C/DEV/ogre-14.2.6 user@linux-host:~/tests
-
-time rsync -c -a /C/DEV/ogre-14.2.6 user@linux-host:~/tests
-
-time fsp-send /C/DEV/ogre-14.2.6 | ssh user@linux-host fsp-recv ~/tests
-
-time tar cf - /C/DEV/ogre-14.2.6 | ssh user@linux-host "tar xf - -C ~/tests"
+sudo tc qdisc add dev eth0 root handle 1: netem delay 100m
+sudo tc qdisc change dev eth0 root netem delay 100ms limit 10000
+sudo tc qdisc show dev eth0
 ```
 
----
+Tuning, set large enough TCP buffers in Linux host (16MB and enough packets)
 
-### Command Lines for Archives (100 ms Latency)
+```bash
+sudo sysctl -w net.ipv4.tcp_rmem="4096 131072 33554432"
+sudo sysctl -w net.ipv4.tcp_wmem="4096 16384 16777216"
+sudo sysctl -w net.ipv4.tcp_window_scaling=1
+```
+
+### Command Lines for Archives (100 ms Latency) - SSH
 
 ```bash
 # Simulate 100ms latency on Linux receiver
@@ -135,55 +132,108 @@ time tar cf - /C/DEV/ogre-14.2.6 | ssh user@linux-host "tar xf - -C ~/tests"
 
 time scp -r /C/DEV/ARCHIVE user@linux-host:~/tests
 
-batch.txt:
-put -r /C/DEV/ARCHIVE tests
-quit
-time sftp -b batch.txt user@linux-host
-
 time rsync -c -a /C/DEV/ARCHIVE user@linux-host:~/tests
 
 time fsp-send /C/DEV/ARCHIVE | ssh user@linux-host fsp-recv ~/tests
 
 time tar cf - /C/DEV/ARCHIVE | ssh user@linux-host "tar xf - -C ~/tests"
+
 ```
 
 ---
 
-### Benchmark Results (100 ms Latency)
+### Benchmark Results (100 ms Latency) - SSH 
 
-| Tool     | Dataset     | Time | Mean Throughput | Comment                                                                    |
-| -------- | ----------- | ---- | --------------- | -------------------------------------------------------------------------- |
-| scp      | Source Code |      |                 | Per-file overhead, latency-sensitive                                       |
-| rsync -c | Source Code |      |                 | Checksum verification per file, latency may affect many small files        |
-| fsp      | Source Code |      |                 | SHA-256 per file, atomic writes, dry-run + progress, transport-independent |
-| tar      | Source Code |      |                 | Fast raw stream, latency-resilient, no integrity check                     |
-| scp      | Archives    |      |                 | Fast transfer for few large files                                          |
-| rsync -c | Archives    |      |                 | Checksum verification per file                                             |
-| fsp      | Archives    |      |                 | SHA-256 per file, atomic writes, dry-run + progress, transport-independent |
-| tar      | Archives    |      |                 | Fast raw stream, latency-resilient, no integrity check                     |
+| Tool     | Dataset     | Time        | Mean Throughput | Comment                                                             |
+| -------- | ----------- | ----------- | --------------- | ------------------------------------------------------------------- |
+| scp      | Source Code | 170m58.357s | 0.36 MB/s       | Severe per-file RTT overhead under latency, SSH protocol limitation |
+| rsync -c | Source Code | 3m23.273s   | 18.2 MB/s       | File pipelining mitigates latency; checksum verification per file   |
+| fsp      | Source Code | 3m27.298s   | 17.8 MB/s       | Streaming transfer with SHA-256 verification and atomic writes      |
+| tar      | Source Code | 3m23.753s   | 18.2 MB/s       | Single stream transfer, avoids per-file latency cost                |
+| scp      | Archives    | 1m6.808s    | 16.2 MB/s       | SSH transfer limited by TCP/SSH window under latency                |
+| rsync -c | Archives    | 1m2.364s    | 17.3 MB/s       | Checksum verification per file; limited by transport throughput     |
+| fsp      | Archives    | 1m2.729s    | 17.2 MB/s       | SHA-256 verification on receiver; streaming transfer                |
+| tar      | Archives    | 1m1.645s    | 17.5 MB/s       | Fast raw stream; transport-limited under 100 ms latency             |
 
----
-
-### Notes (100 ms Latency)
-
-1. **Per-file protocols (SCP/SFTP)**
-
-   * Expect significant slowdown due to latency per file, especially for many small files.
-
-2. **Streaming protocols (FSP/Tar)**
-
-   * Latency is amortized over the stream, so throughput is less affected.
-   * FSP still computes SHA-256 on the receiver and writes atomically.
-
-3. **Rsync `--checksum`**
-
-   * Lighter MD5 checksum, faster than SHA-256.
-   * Many small files → latency per file may reduce throughput; few large files → less impact.
 
 ---
 
-### Summary Comment (100 ms Latency)
+### Notes (100 ms Latency) - SSH
 
-FSP remains **safe and predictable under higher-latency networks**, combining streaming, SHA-256 verification, atomic writes, and progress reporting. Per-file protocols degrade more due to the added round-trip time. Rsync may appear slightly faster on fresh large files (MD5 vs SHA-256), but FSP provides **stronger integrity guarantees** and atomic writes, ensuring partial transfers never leave inconsistent files on the receiver.
+With a simulated 100 ms network latency, the maximum throughput observed is around 17–18 MB/s for streaming transfers. This indicates that the transfer rate becomes limited by the SSH transport and TCP windowing behavior, rather than the raw network bandwidth.
+
+Tools that rely on per-file protocol exchanges, such as SCP, suffer dramatically from latency because each file transfer introduces additional round-trip delays. This explains the extremely poor performance observed when transferring many small files.
+
+In contrast, rsync, fsp, and tar streaming maintain a continuous data stream, which allows the TCP window to stay filled and avoids most per-file latency penalties. As a result, they achieve similar throughput under high latency conditions.
+
+It is also important to note that rsync, fsp, and tar are not tied to SSH and can operate over other transports (for example raw TCP or custom tunnels). This allows them to bypass SSH-related limitations and potentially achieve higher throughput when using optimized transports or larger TCP buffers.
+
+
+---
+
+### Command Lines for Archives (100 ms Latency) - SOCAT
+
+Ok now we move on the interesting bits, scp and sftp cannot be used in this context.
+Fsp and tar are unidirectional app protocol, while rsync is not.
+Rsync will have to run its own daemon => need to create a  rsyncd.conf
+```conf
+[archives]
+path = /my/path/to/store
+read only = false
+```
+
+
+#### Sender
+
+```bash
+
+time rsync -c -a /C/DEV/ARCHIVE rsync://linux-host:9000/archives/
+
+time fsp-send /C/DEV/ARCHIVE | socat STDIN TCP:user@linux-host:9000
+
+time tar cf - /C/DEV/ARCHIVE | socat STDIN TCP:user@linux-host:9000
+
+```
+
+#### Receiver
+
+```bash
+
+rsync --daemon --config=./rsyncd.conf --port=9000
+
+time socat -d TCP-LISTEN:9000 STDOUT | fsp-recv ~/tests
+
+time socat -d TCP-LISTEN:9000 STDOUT | tar xf - -C ~/tests
+
+```
+
+---
+## Benchmark Results (100 ms Latency) - SOCAT
+
+
+| Tool     | Dataset     | Time    | Mean Throughput | Comment                                                                    |
+| -------- | ----------- | ------- | --------------- | -------------------------------------------------------------------------- |
+| rsync -c | Source Code | 36.916s | 100.2 MB/s      | Checksum verification per file over tuned TCP transport                    |
+| fsp      | Source Code | 36.515s | 101.3 MB/s      | SHA-256 per file, atomic writes, dry-run + progress, transport-independent |
+| tar      | Source Code | 35.410s | 104.5 MB/s      | Fast raw stream over tuned TCP, no integrity check                         |
+| rsync -c | Archives    | 12.631s | 85.5 MB/s       | Checksum verification per file                                             |
+| fsp      | Archives    | 11.799s | 91.5 MB/s       | SHA-256 per file, atomic writes, dry-run + progress                        |
+| tar      | Archives    | 11.516s | 93.8 MB/s       | Fast raw stream over tuned TCP, no integrity check                         |
+
+---
+
+### Notes (100 ms Latency) - SOCAT
+
+
+Using **SOCAT with tuned TCP buffers** removes the transport limitations observed with SSH. Under the same **100 ms simulated latency**, the transfers now reach **~100 MB/s**, which is close to the practical throughput limit of a **1 Gbps Ethernet link (~125 MB/s)**.
+
+This demonstrates that the **~17–18 MB/s limit observed with SSH was caused by the SSH transport layer**, likely due to its internal channel windowing and buffering behavior under high latency. When the transfer is performed over **raw TCP**, the kernel can fully utilize larger TCP windows and properly handle the **bandwidth-delay product (BDP)** of the link.
+
+Because **rsync, fsp, and tar** operate as streaming transfers once the session is established, they are able to fully benefit from the tuned TCP transport. As a result, all three tools reach very similar performance levels despite differences in functionality.
+
+It is also worth noting that **FSP performs SHA-256 verification during transfer**, which is computationally more expensive than the **MD5 checksum used by rsync**, yet the performance remains nearly identical. This indicates that under these conditions the **network transfer dominates the cost**, and the hashing overhead is negligible.
+
+
+
 
 
