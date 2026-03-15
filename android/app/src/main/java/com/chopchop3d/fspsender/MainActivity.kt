@@ -188,6 +188,24 @@ fun MainScreen(
     val scrollState = rememberScrollState()
     var showAboutDialog by remember { mutableStateOf(false) }
 
+
+    fun formatElapsedTime(ms: Long): String {
+        val totalSeconds = ms / 1000
+
+        val days = totalSeconds / 86400
+        val hours = (totalSeconds % 86400) / 3600
+        val minutes = (totalSeconds % 3600) / 60
+        val seconds = totalSeconds % 60
+
+        return when {
+            days > 0 -> "%d::%02d:%02d:%02d".format(days, hours, minutes, seconds)
+            hours > 0 -> "%02d:%02d:%02d".format(hours, minutes, seconds)
+            minutes > 0 -> "%02d:%02d".format(minutes, seconds)
+            else -> "%02d".format(seconds)
+        }
+    }
+
+
     // Load saved SSH settings once at start
     LaunchedEffect(Unit) {
         val snapshot = FSPSettings.getConfigSnapshot(context)
@@ -566,7 +584,7 @@ fun MainScreen(
             Text("Total size: $displayTotalSize")
             Spacer(modifier = Modifier.height(8.dp))
             Text("Simulated time: $displaySimulatedTime")
-            Text("Dry-Run Elapsed time: ${dryRunElapsedTime / 1000}.${(dryRunElapsedTime % 1000) / 10} s")
+            Text("Dry-Run Elapsed time: ${formatElapsedTime(dryRunElapsedTime)}")
 
             val showProgress = !dry_run && ((walkerState.stderrServer.contains("Receiv") &&
                     walkerState.stderrServer.isNotBlank()) ||
@@ -579,7 +597,7 @@ fun MainScreen(
                     totalBytes = total
                 }
 
-                Text("Run Elapsed time: ${runElapsedTime / 1000}.${(runElapsedTime % 1000) / 10} s")
+                Text("Run Elapsed time: ${formatElapsedTime(runElapsedTime)}")
                 // Compute live mean throughput
                 Text(
                     "Mean throughput: ${
