@@ -12,7 +12,7 @@ Written in **pure Kotlin** with no native code, NDK, or JNI dependencies — kee
 
 No Termux required.
 
-The app streams snapshots directly over SSH using an embedded client library (based on JSch/sshj-style implementation).
+The app streams snapshots directly over SSH using https://github.com/mwiede/jsch embedded client library.
 
 ---
 
