@@ -205,6 +205,7 @@ Additional docs in the `docs` directory:
     docs/performance.md
     docs/transports.md
     docs/android.md
+    docs/benchmark.md
 
 ---
 
