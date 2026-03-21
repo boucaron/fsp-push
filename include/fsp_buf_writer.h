@@ -7,9 +7,9 @@
 #include <errno.h>
 
 // -----------------------------------------------------------------------------
-// Buffered writer (heap-allocated 16 MB buffer)
+// Buffered writer (heap-allocated 4 MB buffer)
 // -----------------------------------------------------------------------------
-#define FSP_BW_CAP (16 * 1024 * 1024)
+#define FSP_BW_CAP (4 * 1024 * 1024)
 
 typedef struct {
     int      fd;      // file descriptor

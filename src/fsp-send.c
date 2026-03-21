@@ -162,7 +162,7 @@ int main(int argc, char **argv) {
     state.user_data  = &state;
 
     // Allocate file buffer for hashing
-    state.file_buf_size = 1024 * 1024 * 16; // 16 MB
+    state.file_buf_size = 1024 * 1024 * 4; // 4 MB
     state.file_buf = malloc(state.file_buf_size);
     if (!state.file_buf) {
         fprintf(stderr, "Cannot allocate file buffer of size %zu\n", state.file_buf_size);
