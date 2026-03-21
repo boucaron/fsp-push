@@ -230,9 +230,9 @@ fun MainScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
             // Directory selection
-            CyberButton(onClick = { dry_run_executed = false; onPickDirectory() }) {
-                Text("Select Source Directory")
-            }
+            CyberButton(onClick = { dry_run_executed = false; onPickDirectory() },
+                text = "Select Source Directory"
+            )
 
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -268,8 +268,9 @@ fun MainScreen(
                                 }
                                 dry_run_executed = true
                             }
-                        }
-                    ) { Text("Dry-run") }
+                        },
+                        text = "Dry-run"
+                    )
 
 
                     // Run button
@@ -369,8 +370,9 @@ fun MainScreen(
                                     }
                                 }
                             }
-                        }
-                    ) { Text("Run") }
+                        },
+                        text = "Run"
+                    )
                 }
             }
 
@@ -437,7 +439,7 @@ fun MainScreen(
                                 if (success) "SSH status: Connected!" else "SSH status: Failed"
                         }
                     }
-                }) { Text("Test SSH Connection") }
+                }, text = "Test SSH Connection" )
                 Spacer(modifier = Modifier.height(8.dp))
                 CyberButton(onClick = {
                     scope.launch {
@@ -457,7 +459,7 @@ fun MainScreen(
                                 if (success) "SSH: target directory exists" else "SSH: target directory does not exist"
                         }
                     }
-                }) { Text("Test target directory") }
+                }, text = "Test target directory" )
                 Spacer(modifier = Modifier.height(8.dp))
                 CyberButton(onClick = {
                     scope.launch {
@@ -473,37 +475,37 @@ fun MainScreen(
                                 if (success) "SSH: fsp-recv exists on target host" else "SSH: fsp-recv does not exist or not in path"
                         }
                     }
-                }) { Text("Test fsp-recv Connection") }
+                }, text = "Test fsp-recv Connection"
+                )
                 Spacer(modifier = Modifier.height(8.dp))
 
                 // Save / Load buttons
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CyberButton(onClick = {
-                        scope.launch {
-                            FSPSettings.saveConfig(
-                                context,
-                                hostname = sshHost,
-                                username = sshUser,
-                                targetDirectory = targetDirectory,
-                                simulationThroughput = throughputText,
-                                mode = mode
-                            )
-                            sshStatus = "Settings saved!"
-                        }
-                    }) { Text("Save Settings") }
+                CyberButton(onClick = {
+                    scope.launch {
+                        FSPSettings.saveConfig(
+                            context,
+                            hostname = sshHost,
+                            username = sshUser,
+                            targetDirectory = targetDirectory,
+                            simulationThroughput = throughputText,
+                            mode = mode
+                        )
+                        sshStatus = "Settings saved!"
+                    }
+                }, text = "Save Settings")
+                Spacer(modifier = Modifier.height(8.dp))
+                CyberButton(onClick = {
+                    scope.launch {
+                        val snapshot = FSPSettings.getConfigSnapshot(context)
+                        sshHost = snapshot.hostname ?: ""
+                        sshUser = snapshot.username ?: ""
+                        targetDirectory = snapshot.targetDirectory ?: ""
+                        throughputText = snapshot.simulationThroughput ?: ""
+                        mode = snapshot.mode ?: ""
+                        sshStatus = "Settings loaded!"
+                    }
+                }, text = "Load Settings")
 
-                    CyberButton(onClick = {
-                        scope.launch {
-                            val snapshot = FSPSettings.getConfigSnapshot(context)
-                            sshHost = snapshot.hostname ?: ""
-                            sshUser = snapshot.username ?: ""
-                            targetDirectory = snapshot.targetDirectory ?: ""
-                            throughputText = snapshot.simulationThroughput ?: ""
-                            mode = snapshot.mode ?: ""
-                            sshStatus = "Settings loaded!"
-                        }
-                    }) { Text("Load Settings") }
-                }
 
                 Text(sshStatus)
             }
@@ -718,17 +720,13 @@ fun MainScreen(
                             textAlign = TextAlign.Center
                         )
 
-                        Button(
+                        CyberButton(
                             onClick = {
                                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/boucaron/fsp-push"))
                                 context.startActivity(intent)
                             },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary
-                            )
-                        ) {
-                            Text("View on GitHub")
-                        }
+                            text = "View on GitHub"
+                        )
 
                         Text(
                             text = "Licensed under MIT",
@@ -736,9 +734,7 @@ fun MainScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
 
-                        OutlinedButton(onClick = { showAboutDialog = false }) {
-                            Text("Close")
-                        }
+                        CyberButton(onClick = { showAboutDialog = false }, text = "Close")
                     }
                 }
             }
