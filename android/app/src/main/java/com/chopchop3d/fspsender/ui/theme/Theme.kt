@@ -83,32 +83,35 @@ fun CyberCard(content: @Composable () -> Unit) {
     }
 }
 
+// Brighter cyan tweak
+val CyberPrimaryBright = Color(0xFF3CE0E0)      // more neon cyan
+val CyberOnPrimaryBright = Color(0xFF002F2F)    // darker contrasting text
 // -----------------------------
-// Cyber Primary Button (fatter, larger font)
+// Cyber Primary Button (bright cyan, slightly smaller, bold font)
 // -----------------------------
 @Composable
 fun CyberButton(
     onClick: () -> Unit,
-    text: String,                // pass text directly
-    modifier: Modifier = Modifier // allow external Modifier
+    text: String,
+    modifier: Modifier = Modifier
 ) {
     Button(
         onClick = onClick,
         modifier = modifier
-            .height(56.dp), // taller button
-        shape = RoundedCornerShape(12.dp),
+            .height(48.dp), // slightly smaller than 56.dp
+        shape = RoundedCornerShape(10.dp), // slightly less rounded
         colors = ButtonDefaults.buttonColors(
-            containerColor = CyberPrimary,
-            contentColor = CyberOnPrimary
+            containerColor = CyberPrimaryBright,
+            contentColor = CyberOnPrimaryBright
         ),
-        elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp)
+        elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp) // a bit subtler
     ) {
         Text(
             text = text,
             style = MaterialTheme.typography.labelLarge.copy(
-                fontSize = 16.sp,                // larger font
-                fontWeight = FontWeight.ExtraBold, // thicker font
-                letterSpacing = 0.6.sp            // optional cyber feel
+                fontSize = 16.sp,             // slightly smaller font
+                fontWeight = FontWeight.Bold, // still bold, but not ExtraBold
+                letterSpacing = 0.6.sp        // subtle cyber feel
             ),
             modifier = Modifier.padding(horizontal = 6.dp)
         )
