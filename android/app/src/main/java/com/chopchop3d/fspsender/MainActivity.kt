@@ -763,14 +763,18 @@ fun ProgressDisplay(
 
     // Parse transferred / total size (e.g., "123.4 MB / 567.8 MB")
     val sizeMatch = Regex("(\\d+(?:\\.\\d+)?)\\s*([KMGTP]?B)\\s*/\\s*(\\d+(?:\\.\\d+)?)\\s*([KMGTP]?B)").find(line)
-    val transferred = sizeMatch?.let { parseSize(it.groupValues[1], it.groupValues[2]) } ?: 0L
+    val transferredParsed = sizeMatch?.let { parseSize(it.groupValues[1], it.groupValues[2]) } ?: 0L
     val total = sizeMatch?.let { parseSize(it.groupValues[3], it.groupValues[4]) } ?: 1L
+
+    // If transfer is complete, force full bytes
+    val transferred = if (state == TransferState.SUCCESS) total else transferredParsed
 
     // Notify parent composable
     onProgressUpdate(transferred, total)
 
     // Compute progress
-    val progressValue = if (state == TransferState.SUCCESS) 1f else (transferred.toFloat() / total.toFloat()).coerceIn(0f, 1f)
+    val progressValue = if (state == TransferState.SUCCESS) 1f
+    else (transferred.toFloat() / total.toFloat()).coerceIn(0f, 1f)
     val animatedProgress by animateFloatAsState(progressValue)
 
     // Parse speed & ETA
