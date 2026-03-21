@@ -18,7 +18,7 @@ data class ScanResult(
 
 class DirectoryScanner(private val context: ComponentActivity) {
 
-    private val buffer = ByteArray(16 * 1024 * 1024)
+    private val buffer = ByteArray(4 * 1024 * 1024)
     private val visitedDirs = mutableSetOf<String>()
 
     suspend fun scan(
