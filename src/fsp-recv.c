@@ -155,16 +155,16 @@ int main(int argc, char **argv) {
     state.state = FSP_RX_EXPECT_VERSION;
     state.total_bytes = 0;
     state.total_files = 0;
-    state.file_buf = malloc(sizeof(uint8_t) * 1024 * 1024 * 16);
+    state.file_buf = malloc(sizeof(uint8_t) * 1024 * 1024 * 4);
     if ( state.file_buf == NULL ) {
         return -1;
     }
-    state.proto_buf = malloc(sizeof(uint8_t) * 1024 * 1024 * 16);
+    state.proto_buf = malloc(sizeof(uint8_t) * 1024 * 1024 * 4);
     if ( state.proto_buf == NULL ) {
         return -1;
     }
-    state.file_buf_size = sizeof(uint8_t) * 1024 * 1024 * 16;
-    state.proto_buf_size = sizeof(uint8_t) * 1024 * 1024 * 16;
+    state.file_buf_size = sizeof(uint8_t) * 1024 * 1024 * 4;
+    state.proto_buf_size = sizeof(uint8_t) * 1024 * 1024 * 4;
 
     state.entries = NULL;
     state.entries_capacity = 0;
