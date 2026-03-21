@@ -2,87 +2,79 @@ package com.chopchop3d.fspsender.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.*
 import androidx.compose.ui.unit.sp
+import com.chopchop3d.fspsender.R
 
-// Zenburn-inspired Typography: calm, readable, slightly soft
+// -----------------------------
+// Fonts
+// -----------------------------
+val SpaceGrotesk = FontFamily(
+    Font(R.font.space_grotesk_regular, FontWeight.Normal),
+    Font(R.font.space_grotesk_medium, FontWeight.Medium),
+    Font(R.font.space_grotesk_semibold, FontWeight.SemiBold)
+)
+
+// -----------------------------
+// Typography
+// -----------------------------
 val Typography = Typography(
+
+    // Display (tight + strong)
     displayLarge = TextStyle(
-        fontFamily = FontFamily.Monospace,
-        fontWeight = FontWeight.Medium,
-        fontSize = 32.sp,
+        fontFamily = SpaceGrotesk,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 34.sp,
         lineHeight = 40.sp,
-        letterSpacing = 0.sp
+        letterSpacing = (-0.6).sp
     ),
+
     displayMedium = TextStyle(
-        fontFamily = FontFamily.Monospace,
-        fontWeight = FontWeight.Medium,
+        fontFamily = SpaceGrotesk,
+        fontWeight = FontWeight.SemiBold,
         fontSize = 28.sp,
-        lineHeight = 36.sp,
-        letterSpacing = 0.sp
+        lineHeight = 34.sp,
+        letterSpacing = (-0.4).sp
     ),
-    displaySmall = TextStyle(
-        fontFamily = FontFamily.Monospace,
-        fontWeight = FontWeight.Medium,
-        fontSize = 24.sp,
-        lineHeight = 32.sp,
-        letterSpacing = 0.sp
-    ),
+
+    // Titles
     titleLarge = TextStyle(
-        fontFamily = FontFamily.Monospace,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 22.sp,
-        lineHeight = 28.sp,
-        letterSpacing = 0.sp
+        fontFamily = SpaceGrotesk,
+        fontWeight = FontWeight.Medium,
+        fontSize = 20.sp,
+        lineHeight = 26.sp,
+        letterSpacing = (-0.2).sp
     ),
+
     titleMedium = TextStyle(
-        fontFamily = FontFamily.Monospace,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 18.sp,
-        lineHeight = 24.sp,
-        letterSpacing = 0.sp
+        fontFamily = SpaceGrotesk,
+        fontWeight = FontWeight.Medium,
+        fontSize = 17.sp
     ),
-    titleSmall = TextStyle(
-        fontFamily = FontFamily.Monospace,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 16.sp,
-        lineHeight = 22.sp,
-        letterSpacing = 0.sp
-    ),
+
+    // Body
     bodyLarge = TextStyle(
-        fontFamily = FontFamily.Monospace,
-        fontWeight = FontWeight.Normal,
-        fontSize = 16.sp,
-        lineHeight = 24.sp,
-        letterSpacing = 0.sp
+        fontFamily = SpaceGrotesk,
+        fontSize = 15.sp,
+        lineHeight = 22.sp
     ),
+
     bodyMedium = TextStyle(
-        fontFamily = FontFamily.Monospace,
-        fontWeight = FontWeight.Normal,
+        fontFamily = SpaceGrotesk,
         fontSize = 14.sp,
-        lineHeight = 20.sp,
-        letterSpacing = 0.sp
+        lineHeight = 20.sp
     ),
-    bodySmall = TextStyle(
-        fontFamily = FontFamily.Monospace,
-        fontWeight = FontWeight.Normal,
-        fontSize = 12.sp,
-        lineHeight = 16.sp,
-        letterSpacing = 0.sp
-    ),
+
+    // Cyber labels (IMPORTANT for vibe)
     labelLarge = TextStyle(
         fontFamily = FontFamily.Monospace,
-        fontWeight = FontWeight.Medium,
-        fontSize = 14.sp,
-        lineHeight = 20.sp,
-        letterSpacing = 0.sp
+        fontSize = 12.sp,
+        letterSpacing = 1.2.sp
     ),
+
     labelSmall = TextStyle(
         fontFamily = FontFamily.Monospace,
-        fontWeight = FontWeight.Medium,
-        fontSize = 11.sp,
-        lineHeight = 16.sp,
-        letterSpacing = 0.sp
+        fontSize = 10.sp,
+        letterSpacing = 1.5.sp
     )
 )

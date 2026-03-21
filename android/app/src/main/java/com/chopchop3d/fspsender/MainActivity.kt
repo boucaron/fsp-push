@@ -42,7 +42,7 @@ import com.chopchop3d.fspsender.dfs.FSPWalkerState.Companion.FSP_MAX_FILE_LIST_B
 import com.chopchop3d.fspsender.dfs.FSPWalkerState.Companion.FSP_MAX_FILES_PER_LIST
 import com.chopchop3d.fspsender.dfs.FSPWalkerState.Companion.FSP_MAX_WALK_DEPTH
 import com.chopchop3d.fspsender.ui.theme.FSPSenderTheme
-import com.chopchop3d.fspsender.ui.theme.ZenburnButton
+import com.chopchop3d.fspsender.ui.theme.CyberButton
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -230,7 +230,7 @@ fun MainScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
             // Directory selection
-            Button(onClick = { dry_run_executed = false; onPickDirectory() }) {
+            CyberButton(onClick = { dry_run_executed = false; onPickDirectory() }) {
                 Text("Select Source Directory")
             }
 
@@ -242,7 +242,7 @@ fun MainScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     // Dry-run button
-                    ZenburnButton(
+                    CyberButton(
                         onClick = {
                             scope.launch {
                                 statusMessage = "Starting dry-run..."
@@ -273,7 +273,7 @@ fun MainScreen(
 
 
                     // Run button
-                    ZenburnButton(
+                    CyberButton(
                         onClick = {
                             scope.launch {
 
@@ -424,7 +424,7 @@ fun MainScreen(
                     singleLine = true
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                ZenburnButton(onClick = {
+                CyberButton(onClick = {
                     scope.launch {
                         if (!NetworkUtils.isNetworkAvailable(context)) {
                             Log.e("FSP", "No network available, aborting SSH")
@@ -439,7 +439,7 @@ fun MainScreen(
                     }
                 }) { Text("Test SSH Connection") }
                 Spacer(modifier = Modifier.height(8.dp))
-                ZenburnButton(onClick = {
+                CyberButton(onClick = {
                     scope.launch {
                         if (!NetworkUtils.isNetworkAvailable(context)) {
                             Log.e("FSP", "No network available, aborting SSH")
@@ -459,7 +459,7 @@ fun MainScreen(
                     }
                 }) { Text("Test target directory") }
                 Spacer(modifier = Modifier.height(8.dp))
-                ZenburnButton(onClick = {
+                CyberButton(onClick = {
                     scope.launch {
                         if (!NetworkUtils.isNetworkAvailable(context)) {
                             Log.e("FSP", "No network available, aborting SSH")
@@ -478,7 +478,7 @@ fun MainScreen(
 
                 // Save / Load buttons
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ZenburnButton(onClick = {
+                    CyberButton(onClick = {
                         scope.launch {
                             FSPSettings.saveConfig(
                                 context,
@@ -492,7 +492,7 @@ fun MainScreen(
                         }
                     }) { Text("Save Settings") }
 
-                    ZenburnButton(onClick = {
+                    CyberButton(onClick = {
                         scope.launch {
                             val snapshot = FSPSettings.getConfigSnapshot(context)
                             sshHost = snapshot.hostname ?: ""
@@ -787,7 +787,10 @@ fun ProgressDisplay(
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 12.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(0.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
     ) {
         Column(
             modifier = Modifier.padding(16.dp)
@@ -850,22 +853,18 @@ fun StatusBanner(state: TransferState, message: String) {
 
     val containerColor = when (state) {
         TransferState.IDLE -> MaterialTheme.colorScheme.surfaceVariant
-        TransferState.RUNNING -> MaterialTheme.colorScheme.primaryContainer
-        TransferState.SUCCESS -> MaterialTheme.colorScheme.tertiaryContainer
-        TransferState.ERROR -> MaterialTheme.colorScheme.errorContainer
+        TransferState.RUNNING -> MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+        TransferState.SUCCESS -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f)
+        TransferState.ERROR -> MaterialTheme.colorScheme.error.copy(alpha = 0.2f)
     }
 
-    val contentColor = when (state) {
-        TransferState.ERROR -> MaterialTheme.colorScheme.onErrorContainer
-        else -> MaterialTheme.colorScheme.onSurface
-    }
+    val contentColor = MaterialTheme.colorScheme.onSurface
 
     val icon = when (state) {
         TransferState.SUCCESS -> Icons.Default.CheckCircle
         else -> Icons.Default.Info
     }
 
-    // Rotation only used when running
     val infiniteTransition = rememberInfiniteTransition(label = "")
     val rotation by infiniteTransition.animateFloat(
         initialValue = 0f,
@@ -881,7 +880,7 @@ fun StatusBanner(state: TransferState, message: String) {
         modifier = Modifier
             .fillMaxWidth()
             .animateContentSize(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        elevation = CardDefaults.cardElevation(0.dp) // 🔥 flat
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
@@ -922,8 +921,8 @@ fun Accordion(
         modifier = Modifier
             .fillMaxWidth()
             .animateContentSize(animationSpec = spring()),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        elevation = CardDefaults.cardElevation(0.dp)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Text(

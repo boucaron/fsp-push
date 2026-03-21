@@ -2,10 +2,27 @@ package com.chopchop3d.fspsender.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-val Purple80 = Color(0xFFD0BCFF)
-val PurpleGrey80 = Color(0xFFCCC2DC)
-val Pink80 = Color(0xFFEFB8C8)
+// -----------------------------
+// Silent Console Cyber Palette
+// -----------------------------
 
-val Purple40 = Color(0xFF6650a4)
-val PurpleGrey40 = Color(0xFF625b71)
-val Pink40 = Color(0xFF7D5260)
+val CyberBackground = Color(0xFF0C0E10)
+val CyberSurface = Color(0xFF111416)
+val CyberSurfaceContainer = Color(0xFF161A1E)
+val CyberSurfaceBright = Color(0xFF252D33)
+
+val CyberPrimary = Color(0xFF91D2D2)        // muted cyan
+val CyberOnPrimary = Color(0xFF004849)
+
+val CyberSecondary = Color(0xFF4A8B8B)      // dusty cyan
+val CyberOnSecondary = Color(0xFF0C0E10)
+
+val CyberTertiary = Color(0xFF5F2261)       // subtle magenta accent
+val CyberOnTertiary = Color(0xFFF2A6EE)
+
+val CyberTextPrimary = Color(0xFFD0D7D9)
+val CyberTextSecondary = Color(0xFF9AA4A6)
+
+val CyberError = Color(0xFFB86C6C)
+
+val CyberOutline = Color(0xFF42494E)
