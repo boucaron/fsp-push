@@ -224,7 +224,7 @@ Typical build:
 
 # License
 
-FSP is released under the **MIT License** (© 2026–present Julien Boucaron).  
+FSP is released under the **0BSD License** (© 2026–present Julien Boucaron).  
 See the LICENSE file for details.
 
 FSP - Forward Snapshot Protocol  
